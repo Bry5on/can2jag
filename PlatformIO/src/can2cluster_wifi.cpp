@@ -586,12 +586,21 @@ void setupWebRoutes()
     }
 
     if (key == "statorOutput") {
-      String mode = request->getParam(key)->value();
+      String mode = value.as<const char*>();
       uint8_t next = (mode == "EML") ? 1 : (mode == "EPC") ? 2 : 0;
       if (next != 0 && next == coolantOutput)
         next = 0; // refuse same pin as coolant
       statorOutput = next;
-      hasChanges = true;
+      if (statorOutput == 1) {
+        useEMLShiftLight = false;
+        testEML = false;
+        if (dsgParkMode == "EML") dsgParkMode = "None";
+      } else if (statorOutput == 2) {
+        useEPCShiftLight = false;
+        testEPC = false;
+        if (dsgParkMode == "EPC") dsgParkMode = "None";
+      }
+      settingApplied = true;
     }
     if (key == "coolantOutput") {
       String mode = value.as<const char*>();
