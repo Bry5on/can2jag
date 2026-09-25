@@ -79,6 +79,11 @@ void readEEP() {
     pref.putUChar("coolCnt", coolantCalCount);
     pref.putBytes("coolTemp", coolantCalTemp, sizeof(coolantCalTemp));
     pref.putBytes("coolDuty", coolantCalDuty, sizeof(coolantCalDuty));
+    pref.putUChar("statOut", statorOutput);
+    pref.putUChar("statCnt", statorCalCount);
+    pref.putBytes("statTemp", statorCalTemp, sizeof(statorCalTemp));
+    pref.putBytes("statDuty", statorCalDuty, sizeof(statorCalDuty));
+    pref.putBool("useGs450h", useGs450h);
 
   } else {
 
@@ -157,10 +162,15 @@ void readEEP() {
     dsgFinalDrive56 = pref.getFloat("dsgFinal56", dsgFinalDrive56);
     dsgTireCirc = pref.getFloat("dsgTireCirc", dsgTireCirc);
 
-    coolantOutput = pref.getUChar("coolOut", 0);
+    coolantOutput = pref.getUChar("coolOut", 1);
     coolantPwmFreq = pref.getUInt("coolFreq", 10000);
     coolantWarnTemp = pref.getUChar("coolWarn", 120);
     coolantCalCount = pref.getUChar("coolCnt", 0);
+    statorOutput = pref.getUChar("statOut", 2);
+    statorCalCount = pref.getUChar("statCnt", 0);
+    pref.getBytes("statTemp", statorCalTemp, sizeof(statorCalTemp));
+    pref.getBytes("statDuty", statorCalDuty, sizeof(statorCalDuty));
+    useGs450h = pref.getBool("useGs450h", true);
     if (coolantCalCount > COOLANT_CAL_MAX) coolantCalCount = 0;
     pref.getBytes("coolTemp", coolantCalTemp, sizeof(coolantCalTemp));
     pref.getBytes("coolDuty", coolantCalDuty, sizeof(coolantCalDuty));
@@ -283,6 +293,11 @@ void writeEEP(void *args) {
     pref.putUChar("coolCnt", coolantCalCount);
     pref.putBytes("coolTemp", coolantCalTemp, sizeof(coolantCalTemp));
     pref.putBytes("coolDuty", coolantCalDuty, sizeof(coolantCalDuty));
+    pref.putUChar("statOut", statorOutput);
+    pref.putUChar("statCnt", statorCalCount);
+    pref.putBytes("statTemp", statorCalTemp, sizeof(statorCalTemp));
+    pref.putBytes("statDuty", statorCalDuty, sizeof(statorCalDuty));
+    pref.putBool("useGs450h", useGs450h);
 
 #if serialDebugEEP
     DEBUG_EEP("Written EEPROM with data:");

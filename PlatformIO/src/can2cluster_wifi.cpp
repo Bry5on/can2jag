@@ -317,6 +317,9 @@ void setupWebRoutes()
 
     // Coolant gauge output
     doc["coolantOutput"] = coolantOutput == 1 ? "EML" : (coolantOutput == 2 ? "EPC" : "Off");
+    doc["statorOutput"] = statorOutput == 1 ? "EML" : (statorOutput == 2 ? "EPC" : "Off");
+    doc["statorTemp"] = vehicleStatorTemp;
+    doc["statorDuty"] = statorAppliedDuty;
     doc["coolantPwmFreq"] = coolantPwmFreq;
     doc["coolantWarnTemp"] = coolantWarnTemp;
     
@@ -582,6 +585,14 @@ void setupWebRoutes()
       settingApplied = true;
     }
 
+    if (key == "statorOutput") {
+      String mode = request->getParam(key)->value();
+      uint8_t next = (mode == "EML") ? 1 : (mode == "EPC") ? 2 : 0;
+      if (next != 0 && next == coolantOutput)
+        next = 0; // refuse same pin as coolant
+      statorOutput = next;
+      hasChanges = true;
+    }
     if (key == "coolantOutput") {
       String mode = value.as<const char*>();
       coolantOutput = (mode == "EML") ? 1 : (mode == "EPC") ? 2 : 0;

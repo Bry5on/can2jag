@@ -18,6 +18,7 @@ uint16_t stepSpeed = 10;
 
 // existing variables that were previously defined in header:
 uint8_t vehicleCoolantTemp = 0;
+uint8_t vehicleStatorTemp = 0;
 uint16_t vehicleRPMCAN = 0;
 uint16_t vehicleRPM = 0;
 uint16_t vehicleSpeed = 0;
@@ -124,15 +125,23 @@ bool testReverse = false;
 String dsgParkMode = "None";  // DSG Park behavior: "None", "EML", or "EPC"
 
 // Coolant temperature gauge
-uint8_t coolantOutput = 0;       // 0=Off, 1=EML pin, 2=EPC pin
-uint32_t coolantPwmFreq = 10000; // Hz (fixed PWM carrier)
-uint8_t coolantWarnTemp = 120;   // deg C idiot-light threshold
+uint8_t coolantOutput = 1;       // default EML = coolant PWM
+uint8_t statorOutput = 2;        // default EPC = stator PWM
+uint32_t coolantPwmFreq = 200;   // Hz — matches Lingenfelter calibrate that moved the Jag needle
+uint8_t coolantWarnTemp = 120;   // kept in EEPROM, not used to peg
+bool useGs450h = true;
 uint8_t coolantCalCount = 0;
 int16_t coolantCalTemp[COOLANT_CAL_MAX] = {0};
 uint16_t coolantCalDuty[COOLANT_CAL_MAX] = {0};
 bool coolantCalMode = false;
 uint16_t coolantCalDutyNow = 0;
 uint16_t coolantAppliedDuty = 0;
+uint8_t statorCalCount = 0;
+int16_t statorCalTemp[COOLANT_CAL_MAX] = {0};
+uint16_t statorCalDuty[COOLANT_CAL_MAX] = {0};
+bool statorCalMode = false;
+uint16_t statorCalDutyNow = 0;
+uint16_t statorAppliedDuty = 0;
 
 // Board revision + I2C peripheral state
 bool isNewBoard = false;

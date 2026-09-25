@@ -25,7 +25,10 @@ void needleSweep(void);
 // Coolant temperature gauge (PWM on the shared EML/EPC ULN2003 output)
 void applyCoolantOutput(void);              // (re)attach or detach the LEDC channel to EML/EPC per coolantOutput
 void updateCoolantOutput(void);             // compute duty from temp/cal and drive the gauge (call each output loop)
-uint16_t coolantDutyForTemp(int16_t tempC); // interpolate duty (0-1023) for a temperature from the calibration table
+uint16_t coolantDutyForTemp(int16_t tempC);
+void applyStatorOutput(void);
+void updateStatorOutput(void);
+uint16_t statorDutyForTemp(int16_t tempC);
 
 void queryECUTask(void *args);
 

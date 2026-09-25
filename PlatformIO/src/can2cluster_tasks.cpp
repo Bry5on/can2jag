@@ -192,7 +192,7 @@ void updateSpeed(void *args)
         {
           vehicleSpeed = int(gpsSpeed);
         }
-        if (useAftermarket)
+        if (useAftermarket || useGs450h)
         {
           vehicleSpeed = int(aftermarketSpeed);
         }
@@ -307,19 +307,22 @@ void outputControlTask(void *args)
     // updateCoolantOutput handle it. On the new board coolant is a separate DAC.
     bool coolantOwnsEML = (!isNewBoard && coolantOutput == 1);
     bool coolantOwnsEPC = (!isNewBoard && coolantOutput == 2);
+    bool statorOwnsEML = (!isNewBoard && statorOutput == 1 && statorOutput != coolantOutput);
+    bool statorOwnsEPC = (!isNewBoard && statorOutput == 2 && statorOutput != coolantOutput);
 
     // Normal EML/EPC drive, unless the pin is owned by the blink sequence, the
     // coolant PWM gauge, or held by a diagnostic test (handled below).
-    if (!blinkOwnsEML && !coolantOwnsEML && !testEML)
+    if (!blinkOwnsEML && !coolantOwnsEML && !statorOwnsEML && !testEML)
     {
       driveEML(finalEML);
     }
-    if (!blinkOwnsEPC && !coolantOwnsEPC && !testEPC)
+    if (!blinkOwnsEPC && !coolantOwnsEPC && !statorOwnsEPC && !testEPC)
     {
       driveEPC(finalEPC);
     }
 
     updateCoolantOutput();
+    updateStatorOutput();
 
     // Diagnostic test outputs are a hard override ("direct short") — driven
     // last so they beat the coolant PWM gauge, shift-light blink and DSG park.

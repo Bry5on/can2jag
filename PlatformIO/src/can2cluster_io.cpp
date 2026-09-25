@@ -104,6 +104,7 @@ constexpr ledc_channel_t LEDC_RPM_PIN_CHANNEL = LEDC_CHANNEL_2;
 // can run a fixed PWM frequency while the RPM/Speed timers do their own thing.
 constexpr ledc_timer_t LEDC_COOLANT_TIMER = LEDC_TIMER_2;
 constexpr ledc_channel_t LEDC_COOLANT_CHANNEL = LEDC_CHANNEL_3;
+constexpr ledc_channel_t LEDC_STATOR_CHANNEL = LEDC_CHANNEL_4;
 // Run the coolant PWM on the ESP32's independent high-speed LEDC block so
 // retuning it never disturbs the shared low-speed clock the RPM/Speed timers
 // use (changing one low-speed timer's clock source affects them all).
@@ -587,33 +588,45 @@ void setFrequencySpeed(long frequencyHz)
 // Interpolate a PWM duty (0-1023) for a coolant temperature from the
 // calibration table. Points are stored sorted ascending by temperature; the
 // curve is clamped (held flat) beyond the first/last captured point.
-uint16_t coolantDutyForTemp(int16_t tempC)
+static uint16_t interpolateTempDuty(int16_t tempC, uint8_t count, const int16_t *temps, const uint16_t *duties)
 {
-  if (coolantCalCount == 0)
-    return 0;
-  if (coolantCalCount == 1)
-    return coolantCalDuty[0];
-
-  if (tempC <= coolantCalTemp[0])
-    return coolantCalDuty[0];
-  if (tempC >= coolantCalTemp[coolantCalCount - 1])
-    return coolantCalDuty[coolantCalCount - 1];
-
-  for (uint8_t i = 1; i < coolantCalCount; i++)
+  if (count == 0)
   {
-    if (tempC <= coolantCalTemp[i])
+    if (tempC <= 0) return 0;
+    if (tempC >= 120) return 1023;
+    return (uint16_t)((int32_t)tempC * 1023 / 120);
+  }
+  if (count == 1)
+    return duties[0];
+  if (tempC <= temps[0])
+    return duties[0];
+  if (tempC >= temps[count - 1])
+    return duties[count - 1];
+  for (uint8_t i = 1; i < count; i++)
+  {
+    if (tempC <= temps[i])
     {
-      int32_t t0 = coolantCalTemp[i - 1];
-      int32_t t1 = coolantCalTemp[i];
-      int32_t d0 = coolantCalDuty[i - 1];
-      int32_t d1 = coolantCalDuty[i];
+      int32_t t0 = temps[i - 1];
+      int32_t t1 = temps[i];
+      int32_t d0 = duties[i - 1];
+      int32_t d1 = duties[i];
       int32_t span = t1 - t0;
       if (span == 0)
-        return static_cast<uint16_t>(d1);
-      return static_cast<uint16_t>(d0 + (d1 - d0) * (tempC - t0) / span);
+        return (uint16_t)d1;
+      return (uint16_t)(d0 + (d1 - d0) * (tempC - t0) / span);
     }
   }
-  return coolantCalDuty[coolantCalCount - 1];
+  return duties[count - 1];
+}
+
+uint16_t coolantDutyForTemp(int16_t tempC)
+{
+  return interpolateTempDuty(tempC, coolantCalCount, coolantCalTemp, coolantCalDuty);
+}
+
+uint16_t statorDutyForTemp(int16_t tempC)
+{
+  return interpolateTempDuty(tempC, statorCalCount, statorCalTemp, statorCalDuty);
 }
 
 // Attach the coolant LEDC channel to the chosen EML/EPC pin, or detach and
@@ -698,14 +711,12 @@ void updateCoolantOutput()
     ledc_set_freq(LEDC_COOLANT_MODE, LEDC_COOLANT_TIMER, coolantPwmFreq > 0 ? coolantPwmFreq : 100);
   }
 
-  // Idiot-light gauge: while calibrating hold the jog duty; otherwise peg the
-  // needle fully (tripping the cluster's warning lamp) at or above the warning
-  // temperature, and stay off below it.
+  // Calibration curve only — never peg at warning temperature.
   uint16_t duty;
   if (coolantCalMode)
     duty = coolantCalDutyNow;
   else
-    duty = (vehicleCoolantTemp >= coolantWarnTemp) ? LEDC_COOLANT_MAX_DUTY : 0;
+    duty = coolantDutyForTemp((int16_t)vehicleCoolantTemp);
   if (duty > LEDC_COOLANT_MAX_DUTY)
     duty = LEDC_COOLANT_MAX_DUTY;
   coolantAppliedDuty = duty;
@@ -716,6 +727,89 @@ void updateCoolantOutput()
     lastDuty = duty;
     ledc_set_duty(LEDC_COOLANT_MODE, LEDC_COOLANT_CHANNEL, duty);
     ledc_update_duty(LEDC_COOLANT_MODE, LEDC_COOLANT_CHANNEL);
+  }
+}
+
+
+void applyStatorOutput()
+{
+  static int statorActivePin = -1;
+
+  int desired = -1;
+  if (statorOutput == 1)
+    desired = pinEML;
+  else if (statorOutput == 2)
+    desired = pinEPC;
+
+  // Coolant owns the pin if both were set to the same output.
+  if ((statorOutput != 0) && (statorOutput == coolantOutput))
+    desired = -1;
+
+  if ((desired == pinEML && testEML) || (desired == pinEPC && testEPC))
+    desired = -1;
+
+  if (desired == statorActivePin)
+    return;
+
+  if (statorActivePin >= 0)
+  {
+    ledc_stop(LEDC_COOLANT_MODE, LEDC_STATOR_CHANNEL, 0);
+    pinMode(statorActivePin, OUTPUT);
+    digitalWrite(statorActivePin, LOW);
+  }
+
+  if (desired >= 0)
+  {
+    ledc_timer_config_t statorTimerConfig = {};
+    statorTimerConfig.speed_mode = LEDC_COOLANT_MODE;
+    statorTimerConfig.timer_num = LEDC_COOLANT_TIMER;
+    statorTimerConfig.duty_resolution = LEDC_RESOLUTION;
+    statorTimerConfig.freq_hz = coolantPwmFreq > 0 ? coolantPwmFreq : 200;
+    statorTimerConfig.clk_cfg = LEDC_AUTO_CLK;
+    ledc_timer_config(&statorTimerConfig);
+
+    ledc_channel_config_t statorChannelConfig = {};
+    statorChannelConfig.gpio_num = desired;
+    statorChannelConfig.speed_mode = LEDC_COOLANT_MODE;
+    statorChannelConfig.channel = LEDC_STATOR_CHANNEL;
+    statorChannelConfig.intr_type = LEDC_INTR_DISABLE;
+    statorChannelConfig.timer_sel = LEDC_COOLANT_TIMER;
+    statorChannelConfig.duty = LEDC_DUTY_OFF;
+    statorChannelConfig.hpoint = 0;
+    ledc_channel_config(&statorChannelConfig);
+  }
+
+  statorActivePin = desired;
+}
+
+void updateStatorOutput()
+{
+  if (isNewBoard)
+    return; // new board has a single DAC for coolant only
+
+  applyStatorOutput();
+
+  if (statorOutput == 0 || statorOutput == coolantOutput)
+    return;
+
+  if ((statorOutput == 1 && testEML) || (statorOutput == 2 && testEPC))
+    return;
+
+  uint16_t duty;
+  if (statorCalMode)
+    duty = statorCalDutyNow;
+  else
+    duty = statorDutyForTemp((int16_t)vehicleStatorTemp);
+  if (duty > LEDC_COOLANT_MAX_DUTY)
+    duty = LEDC_COOLANT_MAX_DUTY;
+  statorAppliedDuty = duty;
+
+  static uint16_t lastDuty = 0xFFFF;
+  if (duty != lastDuty)
+  {
+    lastDuty = duty;
+    ledc_set_duty(LEDC_COOLANT_MODE, LEDC_STATOR_CHANNEL, duty);
+    ledc_update_duty(LEDC_COOLANT_MODE, LEDC_STATOR_CHANNEL);
   }
 }
 

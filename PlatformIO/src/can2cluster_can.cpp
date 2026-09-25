@@ -392,6 +392,18 @@ void onBodyRX(const twai_message_t &frame)
     break;
   }
 
+  // GS450H VCU 0x0AA (11-bit): 
+  //   b1 = mph*2, b2 = stator C, b3 = inverter water C,
+  //   b4/b5 = shaft RPM LE, b6 = |amps|/2
+  if (useGs450h && frame.identifier == 0x0AAu && frame.data_length_code >= 7)
+  {
+    vehicleStatorTemp  = frame.data[2];
+    vehicleCoolantTemp = frame.data[3];
+    aftermarketSpeed   = frame.data[1] * 0.5; // already mph
+    // tach-ammeter: display amps*10 as RPM
+    vehicleRPMCAN = (uint16_t)frame.data[6] * 20u; // (A/2)*20 = A*10
+  }
+
   // Aftermarket / Custom CAN speed input — parsed independently of the VW switch table
   if (useAftermarket && frame.identifier == (aftermarketSpeedID & 0x7FF)) {
     uint8_t lowIdx  = constrain(aftermarketSpeedLowByte,  0, 7);

@@ -246,7 +246,8 @@ extern uint16_t stepSpeed;
 #define DEBUG_UDS_(x, ...)
 #endif
 
-extern uint8_t vehicleCoolantTemp; // for vehicle coolant temp
+extern uint8_t vehicleCoolantTemp; // inverter water C from 0x0AA byte 3
+extern uint8_t vehicleStatorTemp;  // stator C from 0x0AA byte 2
 extern uint16_t vehicleRPMCAN;     // current CAN RPM
 extern uint16_t vehicleRPM;        // current RPM for cluster
 extern uint16_t vehicleSpeed;      // current Speed for cluster
@@ -357,15 +358,23 @@ extern bool testReverse;                  // bool to force turn on Reverse
 extern String dsgParkMode;                // DSG Park behavior: "None", "EML", or "EPC"
 
 // Coolant temperature gauge (PWM on a shared ULN2003 output, EML or EPC pin)
-extern uint8_t coolantOutput;                  // 0=Off, 1=EML pin, 2=EPC pin (mutually exclusive with that pin's light features)
-extern uint32_t coolantPwmFreq;                // fixed PWM carrier frequency (Hz) driving the gauge
-extern uint8_t coolantWarnTemp;                // idiot-light threshold (deg C): peg gauge & warning lamp at/above this
+extern uint8_t coolantOutput;                  // 0=Off, 1=EML pin, 2=EPC pin
+extern uint8_t statorOutput;                   // 0=Off, 1=EML pin, 2=EPC pin (must differ from coolantOutput)
+extern uint32_t coolantPwmFreq;                // fixed PWM carrier frequency (Hz) driving both temp gauges
+extern uint8_t coolantWarnTemp;                // unused for pegging (kept for EEPROM compat)
+extern bool useGs450h;                         // decode VCU 0x0AA (temps, speed, tach-ammeter)
 extern uint8_t coolantCalCount;                // number of calibration points in use
 extern int16_t coolantCalTemp[COOLANT_CAL_MAX];  // calibration temperature points (deg C), kept sorted ascending
 extern uint16_t coolantCalDuty[COOLANT_CAL_MAX]; // calibration duty points (0-1023), paired with coolantCalTemp
 extern bool coolantCalMode;                    // when true, output is driven at coolantCalDutyNow so the needle can be read
 extern uint16_t coolantCalDutyNow;             // live jog duty used while calibrating (0-1023 old / 0-4095 new)
-extern uint16_t coolantAppliedDuty;            // last duty actually written to the gauge (for status/curve)
+extern uint16_t coolantAppliedDuty;            // last duty written to coolant pin
+extern uint8_t statorCalCount;
+extern int16_t statorCalTemp[COOLANT_CAL_MAX];
+extern uint16_t statorCalDuty[COOLANT_CAL_MAX];
+extern bool statorCalMode;
+extern uint16_t statorCalDutyNow;
+extern uint16_t statorAppliedDuty;
 
 // Board revision + I2C peripheral state (new board only)
 extern bool isNewBoard;      // true when pinBoardSense (GPIO32) is grounded

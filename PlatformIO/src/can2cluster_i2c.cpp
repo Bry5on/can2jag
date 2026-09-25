@@ -1,4 +1,5 @@
 #include "can2cluster_i2c.h"
+#include "can2cluster_io.h"
 #include "can2cluster_buttons.h"
 #include <Wire.h>
 
@@ -241,7 +242,10 @@ void updateCoolantDAC()
   if (coolantCalMode)
     duty = coolantCalDutyNow;
   else
-    duty = (vehicleCoolantTemp >= coolantWarnTemp) ? MCP4725_MAX : 0;
+    duty = coolantDutyForTemp((int16_t)vehicleCoolantTemp);
+    // scale 10-bit curve up to 12-bit DAC
+    if (duty <= 1023)
+      duty = (uint16_t)((uint32_t)duty * MCP4725_MAX / 1023u);
   if (duty > MCP4725_MAX)
     duty = MCP4725_MAX;
   coolantAppliedDuty = duty;
