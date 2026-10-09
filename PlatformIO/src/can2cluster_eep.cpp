@@ -170,6 +170,17 @@ void readEEP() {
     statorCalCount = pref.getUChar("statCnt", 0);
     pref.getBytes("statTemp", statorCalTemp, sizeof(statorCalTemp));
     pref.getBytes("statDuty", statorCalDuty, sizeof(statorCalDuty));
+    if (statorCalCount == 0)
+    {
+      const int16_t temps[] = {0, 15, 20, 60, 80, 110, 120};
+      const uint16_t duties[] = {60, 110, 120, 170, 220, 370, 470};
+      statorCalCount = 7;
+      for (uint8_t i = 0; i < statorCalCount; i++)
+      {
+        statorCalTemp[i] = temps[i];
+        statorCalDuty[i] = duties[i];
+      }
+    }
     useGs450h = pref.getBool("useGs450h", true);
     if (coolantCalCount > COOLANT_CAL_MAX) coolantCalCount = 0;
     pref.getBytes("coolTemp", coolantCalTemp, sizeof(coolantCalTemp));
