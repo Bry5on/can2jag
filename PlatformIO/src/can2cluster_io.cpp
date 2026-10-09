@@ -517,17 +517,24 @@ void setFrequencyRPM(long frequencyHz)
 
   ledc_channel_t activeChannel = coilType ? LEDC_RPM_COIL_CHANNEL : LEDC_RPM_PIN_CHANNEL;
   ledc_channel_t inactiveChannel = coilType ? LEDC_RPM_PIN_CHANNEL : LEDC_RPM_COIL_CHANNEL;
+  int activePin = coilType ? pinCoil : pinRPM;
+  int inactivePin = coilType ? pinRPM : pinCoil;
 
+  // Drop both pins out of LEDC before touching the timer. Reconfiguring a timer
+  // that still owns the tach pin emits a burst at the old rate, which the Spiyda
+  // counts as redline.
   ledc_stop(LEDC_RPM_MODE, inactiveChannel, 0);
+  ledc_stop(LEDC_RPM_MODE, activeChannel, 0);
+  pinMode(inactivePin, OUTPUT);
+  digitalWrite(inactivePin, LOW);
+  pinMode(activePin, OUTPUT);
+  digitalWrite(activePin, LOW);
 
   if (frequencyHz > 0)
   {
     uint32_t targetFreq = static_cast<uint32_t>(frequencyHz);
     if (targetFreq < LEDC_MIN_FREQ_HZ)
       targetFreq = LEDC_MIN_FREQ_HZ;
-    // ledc_set_freq() left this timer at its setup rate, so the tach saw 5 kHz.
-    // Reconfigure the timer at the target rate while the pin is held off.
-    ledc_stop(LEDC_RPM_MODE, activeChannel, 0);
     ledc_timer_config_t rpmTimerConfig = {};
     rpmTimerConfig.speed_mode = LEDC_RPM_MODE;
     rpmTimerConfig.timer_num = LEDC_RPM_TIMER;
@@ -535,12 +542,17 @@ void setFrequencyRPM(long frequencyHz)
     rpmTimerConfig.freq_hz = targetFreq;
     rpmTimerConfig.clk_cfg = LEDC_AUTO_CLK;
     ledc_timer_config(&rpmTimerConfig);
-    ledc_set_duty(LEDC_RPM_MODE, activeChannel, LEDC_DUTY_50);
+
+    ledc_channel_config_t channelConfig = {};
+    channelConfig.gpio_num = activePin;
+    channelConfig.speed_mode = LEDC_RPM_MODE;
+    channelConfig.channel = activeChannel;
+    channelConfig.intr_type = LEDC_INTR_DISABLE;
+    channelConfig.timer_sel = LEDC_RPM_TIMER;
+    channelConfig.duty = LEDC_DUTY_50;
+    channelConfig.hpoint = 0;
+    ledc_channel_config(&channelConfig);
     ledc_update_duty(LEDC_RPM_MODE, activeChannel);
-  }
-  else
-  {
-    ledc_stop(LEDC_RPM_MODE, activeChannel, 0);
   }
 }
 
