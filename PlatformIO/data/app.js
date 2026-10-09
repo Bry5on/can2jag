@@ -323,6 +323,9 @@ async function fetchSettings() {
     // Coolant gauge output
     const coolantOutputEl = document.getElementById('coolantOutput');
     if (coolantOutputEl) coolantOutputEl.value = data.coolantOutput || 'Off';
+    const statorOutputEl = document.getElementById('statorOutput');
+    if (statorOutputEl) statorOutputEl.value = data.statorOutput || 'Off';
+    if (typeof syncLastOutputValues === 'function') syncLastOutputValues();
     const coolantWarnEl = document.getElementById('coolantWarnTemp');
     if (coolantWarnEl) {
       const wt = (data.coolantWarnTemp !== undefined) ? data.coolantWarnTemp : 120;
@@ -1064,11 +1067,12 @@ function setText(id, val) {
 // the Coolant gauge). Applying a new owner for a pin turns off whatever else
 // was using it, with a confirmation prompt + toast so nothing is silently lost.
 // ============================================================================
-const OUTPUT_IDS = ['shiftLight', 'dsgParkMode', 'coolantOutput'];
+const OUTPUT_IDS = ['shiftLight', 'dsgParkMode', 'coolantOutput', 'statorOutput'];
 const FEATURE_LABELS = {
   shiftLight: 'Shift Light',
   dsgParkMode: 'DSG Park Indicator',
-  coolantOutput: 'Coolant Gauge'
+  coolantOutput: 'Coolant Gauge',
+  statorOutput: 'Stator Gauge'
 };
 let lastOutputValues = {};
 
@@ -1091,7 +1095,7 @@ function clearedValueForPin(featureId, currentValue, pin) {
     if (currentValue === 'Both') return pin === 'EML' ? 'EPC' : 'EML';
     return 'None';
   }
-  if (featureId === 'coolantOutput') return 'Off';
+  if (featureId === 'coolantOutput' || featureId === 'statorOutput') return 'Off';
   return 'None'; // dsgParkMode
 }
 
