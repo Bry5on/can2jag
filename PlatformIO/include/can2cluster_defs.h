@@ -17,7 +17,7 @@
 
 // V3.24.1 - RPM square no longer parks the timer at 5 kHz; OTA points at Bry5on/can2jag XJ.
 //         (guided GitHub update, Home WiFi bridge mode, recovery page).
-#define FW_VERSION "3.24.1"
+#define FW_VERSION "3.24.2"
 
 #define COOLANT_CAL_MAX 12 // max calibration points for the coolant temp gauge
 // LEDC 10-bit resolution at the 80 MHz APB clock tops out at 80e6/1024 ≈ 78125 Hz.
