@@ -587,6 +587,20 @@ void setupWebRoutes()
       settingApplied = true;
     }
 
+    if (key == "statorLoadCurve") {
+      const int16_t temps[] = {0, 15, 20, 60, 80, 110, 120};
+      const uint16_t duties[] = {60, 110, 120, 170, 220, 370, 470};
+      statorCalCount = 7;
+      for (uint8_t i = 0; i < statorCalCount; i++)
+      {
+        statorCalTemp[i] = temps[i];
+        statorCalDuty[i] = duties[i];
+      }
+      statorCalMode = false;
+      if (coolantOutput != 1)
+        statorOutput = 1; // EML, unless coolant already owns it
+      settingApplied = true;
+    }
     if (key == "statorOutput") {
       String mode = value.as<const char*>();
       uint8_t next = (mode == "EML") ? 1 : (mode == "EPC") ? 2 : 0;
