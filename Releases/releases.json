@@ -1,7 +1,20 @@
 {
   "product": "Can2Cluster",
-  "latest": "3.24",
+  "latest": "3.24.1",
   "releases": [
+    {
+      "version": "3.24.1",
+      "channel": "stable",
+      "date": "2026-10-09",
+      "ota": true,
+      "notes": "RPM square no longer parks the timer at 5 kHz. OTA Check for updates points at Bry5on/can2jag XJ.",
+      "firmware": {
+        "path": "V3.24.1/firmware.bin"
+      },
+      "filesystem": {
+        "path": "V3.24.1/littlefs.bin"
+      }
+    },
     {
       "version": "3.24",
       "channel": "stable",
