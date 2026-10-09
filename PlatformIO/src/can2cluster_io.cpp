@@ -152,7 +152,7 @@ void setupLedcOutputs()
   rpmTimerConfig.speed_mode = LEDC_RPM_MODE;
   rpmTimerConfig.timer_num = LEDC_RPM_TIMER;
   rpmTimerConfig.duty_resolution = LEDC_RESOLUTION;
-  rpmTimerConfig.freq_hz = LEDC_LATCH_FREQ_HZ;
+  rpmTimerConfig.freq_hz = LEDC_MIN_FREQ_HZ;
   rpmTimerConfig.clk_cfg = LEDC_AUTO_CLK;
   ledc_timer_config(&rpmTimerConfig);
 
@@ -525,8 +525,16 @@ void setFrequencyRPM(long frequencyHz)
     uint32_t targetFreq = static_cast<uint32_t>(frequencyHz);
     if (targetFreq < LEDC_MIN_FREQ_HZ)
       targetFreq = LEDC_MIN_FREQ_HZ;
-    // Program the real rate first, then enable the 50% square. No 5 kHz park.
-    ledc_set_freq(LEDC_RPM_MODE, LEDC_RPM_TIMER, targetFreq);
+    // ledc_set_freq() left this timer at its setup rate, so the tach saw 5 kHz.
+    // Reconfigure the timer at the target rate while the pin is held off.
+    ledc_stop(LEDC_RPM_MODE, activeChannel, 0);
+    ledc_timer_config_t rpmTimerConfig = {};
+    rpmTimerConfig.speed_mode = LEDC_RPM_MODE;
+    rpmTimerConfig.timer_num = LEDC_RPM_TIMER;
+    rpmTimerConfig.duty_resolution = LEDC_RESOLUTION;
+    rpmTimerConfig.freq_hz = targetFreq;
+    rpmTimerConfig.clk_cfg = LEDC_AUTO_CLK;
+    ledc_timer_config(&rpmTimerConfig);
     ledc_set_duty(LEDC_RPM_MODE, activeChannel, LEDC_DUTY_50);
     ledc_update_duty(LEDC_RPM_MODE, activeChannel);
   }
