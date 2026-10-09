@@ -778,7 +778,8 @@ void connectWifi()
   ota_config_t ocfg = otaDefaultConfig();
   ocfg.fwVersion  = FW_VERSION;
   ocfg.product    = "Can2Cluster";
-  ocfg.githubRepo = "adamforbes92/can2cluster"; // Releases/ + releases.json for "Check for updates"
+  ocfg.githubRepo = "Bry5on/can2jag"; // Releases/ + releases.json for "Check for updates"
+  ocfg.githubBranch = "XJ";
   ocfg.verbose    = serialDebugWifi;            // honour the project's WiFi debug gating
   otaManagerInit(&ocfg);
 
