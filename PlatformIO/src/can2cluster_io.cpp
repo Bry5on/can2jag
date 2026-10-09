@@ -510,8 +510,7 @@ void setFrequencyRPM(long frequencyHz)
   static bool attached = false;
   static int attachedPin = -1;
 
-  // A 1 Hz retune restarts the LEDC period and the RVI needle hunts. Hold the
-  // current rate until the command moves by more than 3 Hz.
+  // Ignore 1 Hz chatter. A retune restarts the LEDC period and the needle hunts.
   if (coilType == lastCoilType && lastFrequencyHz >= 0 &&
       (frequencyHz > lastFrequencyHz ? frequencyHz - lastFrequencyHz : lastFrequencyHz - frequencyHz) <= 3)
     return;
@@ -528,6 +527,8 @@ void setFrequencyRPM(long frequencyHz)
 
   if (frequencyHz <= 0)
   {
+    if (attached)
+      ledcDetach(attachedPin);
     holdRpmPinLow(activeChannel, activePin);
     attached = false;
     attachedPin = -1;
@@ -539,36 +540,23 @@ void setFrequencyRPM(long frequencyHz)
     targetFreq = LEDC_MIN_FREQ_HZ;
   uint32_t duty = rpmPulseDuty(targetFreq);
 
-  // Bind once, at the requested rate. Later changes only retune the timer so the
-  // pin is never dropped back onto the idle rate.
+  // ledc_timer_config() on this core leaves the timer at the 10-bit floor
+  // (~1.2 Hz). The Arduino driver programs the divider, which is what the
+  // Spiyda has to receive or it pegs once per slow period.
   if (!attached || attachedPin != activePin)
   {
+    if (attached)
+      ledcDetach(attachedPin);
     holdRpmPinLow(activeChannel, activePin);
-    ledc_timer_config_t rpmTimerConfig = {};
-    rpmTimerConfig.speed_mode = LEDC_RPM_MODE;
-    rpmTimerConfig.timer_num = LEDC_RPM_TIMER;
-    rpmTimerConfig.duty_resolution = LEDC_RESOLUTION;
-    rpmTimerConfig.freq_hz = targetFreq;
-    rpmTimerConfig.clk_cfg = LEDC_AUTO_CLK;
-    ledc_timer_config(&rpmTimerConfig);
-
-    ledc_channel_config_t channelConfig = {};
-    channelConfig.gpio_num = activePin;
-    channelConfig.speed_mode = LEDC_RPM_MODE;
-    channelConfig.channel = activeChannel;
-    channelConfig.intr_type = LEDC_INTR_DISABLE;
-    channelConfig.timer_sel = LEDC_RPM_TIMER;
-    channelConfig.duty = duty;
-    channelConfig.hpoint = 0;
-    ledc_channel_config(&channelConfig);
+    ledcAttach((uint8_t)activePin, targetFreq, 10);
+    ledcWrite((uint8_t)activePin, duty);
     attached = true;
     attachedPin = activePin;
   }
   else
   {
-    ledc_set_freq(LEDC_RPM_MODE, LEDC_RPM_TIMER, targetFreq);
-    ledc_set_duty(LEDC_RPM_MODE, activeChannel, duty);
-    ledc_update_duty(LEDC_RPM_MODE, activeChannel);
+    ledcChangeFrequency((uint8_t)activePin, targetFreq, 10);
+    ledcWrite((uint8_t)activePin, duty);
   }
 }
 
