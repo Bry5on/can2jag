@@ -491,13 +491,14 @@ static void holdRpmPinLow(ledc_channel_t channel, int pin)
   digitalWrite(pin, LOW);
 }
 
-// Spiyda counts edges and wants a 1-2 ms pulse, not a 50% square. A 2 Hz
-// square has a 250 ms half-period and pegs the needle once per cycle.
+// Spiyda counts edges. A 1.5 ms pulse charges the RVI movement enough to
+// overshoot and fall, which is the hunt. 0.8 ms stays inside its 1-2 ms window
+// and is capped so a high rate cannot turn back into a wide pulse.
 static uint32_t rpmPulseDuty(uint32_t freqHz)
 {
-  uint32_t duty = (freqHz * 1536UL) / 1000UL; // 1.5 ms at 10-bit resolution
+  uint32_t duty = (freqHz * 819UL) / 1000UL; // 0.8 ms at 10-bit resolution
   if (duty < 1) duty = 1;
-  if (duty > 200) duty = 200;
+  if (duty > 120) duty = 120;
   return duty;
 }
 
@@ -509,7 +510,10 @@ void setFrequencyRPM(long frequencyHz)
   static bool attached = false;
   static int attachedPin = -1;
 
-  if (frequencyHz == lastFrequencyHz && coilType == lastCoilType)
+  // A 1 Hz retune restarts the LEDC period and the RVI needle hunts. Hold the
+  // current rate until the command moves by more than 3 Hz.
+  if (coilType == lastCoilType && lastFrequencyHz >= 0 &&
+      (frequencyHz > lastFrequencyHz ? frequencyHz - lastFrequencyHz : lastFrequencyHz - frequencyHz) <= 3)
     return;
 
   lastFrequencyHz = frequencyHz;
