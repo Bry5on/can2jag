@@ -8,6 +8,7 @@ function initApp() {
   initControls();
   initCollapsibleCards();
   initCoolant();
+  initStatorCurve();
   initOutputConflicts();
   initGaugeUI();
   fetchSettings();  // Load settings once on page load
@@ -789,6 +790,19 @@ function initGaugeUI() {
 // ---- Coolant gauge calibration builder ----
 let coolantState = { duty: 0, maxDuty: 1023, calMode: false, points: [], temp: 0, appliedDuty: 0 };
 let coolantSelectedTemp = 90;
+
+function initStatorCurve() {
+  const btn = document.getElementById('statorLoadCurve');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    const statorEl = document.getElementById('statorOutput');
+    if (statorEl) statorEl.value = 'EML';
+    await pushControl('statorLoadCurve', 1);
+    await pushControl('statorOutput', 'EML');
+    if (typeof syncLastOutputValues === 'function') syncLastOutputValues();
+    if (typeof showNotification === 'function') showNotification('Stator curve loaded on EML');
+  });
+}
 
 function initCoolant() {
   const warnEl = document.getElementById('coolantWarnTemp');
