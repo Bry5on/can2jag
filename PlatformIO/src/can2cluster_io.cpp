@@ -1,3 +1,4 @@
+// LATCHFIX-2026-10-08: RPM output no longer parks at 5 kHz. Search for this line.
 #include "can2cluster_io.h"
 #include "can2cluster_gps.h"
 #include "can2cluster_i2c.h"
@@ -99,6 +100,9 @@ constexpr ledc_channel_t LEDC_SPEED_CHANNEL = LEDC_CHANNEL_0;
 constexpr ledc_timer_t LEDC_RPM_TIMER = LEDC_TIMER_1;
 constexpr ledc_channel_t LEDC_RPM_COIL_CHANNEL = LEDC_CHANNEL_1;
 constexpr ledc_channel_t LEDC_RPM_PIN_CHANNEL = LEDC_CHANNEL_2;
+// High-speed mode latches duty in hardware and returns immediately, so the
+// RPM timer does not have to be parked at 5 kHz to avoid the low-speed update spin.
+constexpr ledc_mode_t LEDC_RPM_MODE = LEDC_HIGH_SPEED_MODE;
 
 // Coolant gauge shares the EML/EPC ULN2003 output; its own timer/channel so it
 // can run a fixed PWM frequency while the RPM/Speed timers do their own thing.
@@ -145,7 +149,7 @@ void setupLedcOutputs()
   ledc_channel_config(&speedChannelConfig);
 
   ledc_timer_config_t rpmTimerConfig = {};
-  rpmTimerConfig.speed_mode = LEDC_MODE;
+  rpmTimerConfig.speed_mode = LEDC_RPM_MODE;
   rpmTimerConfig.timer_num = LEDC_RPM_TIMER;
   rpmTimerConfig.duty_resolution = LEDC_RESOLUTION;
   rpmTimerConfig.freq_hz = LEDC_LATCH_FREQ_HZ;
@@ -154,7 +158,7 @@ void setupLedcOutputs()
 
   ledc_channel_config_t coilChannelConfig = {};
   coilChannelConfig.gpio_num = pinCoil;
-  coilChannelConfig.speed_mode = LEDC_MODE;
+  coilChannelConfig.speed_mode = LEDC_RPM_MODE;
   coilChannelConfig.channel = LEDC_RPM_COIL_CHANNEL;
   coilChannelConfig.intr_type = LEDC_INTR_DISABLE;
   coilChannelConfig.timer_sel = LEDC_RPM_TIMER;
@@ -164,7 +168,7 @@ void setupLedcOutputs()
 
   ledc_channel_config_t rpmPinChannelConfig = {};
   rpmPinChannelConfig.gpio_num = pinRPM;
-  rpmPinChannelConfig.speed_mode = LEDC_MODE;
+  rpmPinChannelConfig.speed_mode = LEDC_RPM_MODE;
   rpmPinChannelConfig.channel = LEDC_RPM_PIN_CHANNEL;
   rpmPinChannelConfig.intr_type = LEDC_INTR_DISABLE;
   rpmPinChannelConfig.timer_sel = LEDC_RPM_TIMER;
@@ -502,50 +506,33 @@ void diagTestTask(void *args)
 // adjust output frequency
 void setFrequencyRPM(long frequencyHz)
 {
-  static long     lastFrequencyHz = -1;
-  static bool     lastCoilType    = false;
+  static long lastFrequencyHz = -1;
+  static bool lastCoilType = false;
 
-  // Only call LEDC API when something actually changed — calling
-  // ledc_set_freq/duty every 1 ms while spinning hammers the LEDC
-  // driver spinlock and triggers internal FreeRTOS assertions.
   if (frequencyHz == lastFrequencyHz && coilType == lastCoilType)
     return;
 
   lastFrequencyHz = frequencyHz;
-  lastCoilType    = coilType;
+  lastCoilType = coilType;
 
-  ledc_channel_t activeChannel   = coilType ? LEDC_RPM_COIL_CHANNEL : LEDC_RPM_PIN_CHANNEL;
-  ledc_channel_t inactiveChannel = coilType ? LEDC_RPM_PIN_CHANNEL  : LEDC_RPM_COIL_CHANNEL;
+  ledc_channel_t activeChannel = coilType ? LEDC_RPM_COIL_CHANNEL : LEDC_RPM_PIN_CHANNEL;
+  ledc_channel_t inactiveChannel = coilType ? LEDC_RPM_PIN_CHANNEL : LEDC_RPM_COIL_CHANNEL;
 
-  static ledc_channel_t onChannel = LEDC_RPM_COIL_CHANNEL;
-  static bool outputOn = false;
-
-  ledc_stop(LEDC_MODE, inactiveChannel, 0); // immediate, no duty latch
+  ledc_stop(LEDC_RPM_MODE, inactiveChannel, 0);
 
   if (frequencyHz > 0)
   {
     uint32_t targetFreq = static_cast<uint32_t>(frequencyHz);
     if (targetFreq < LEDC_MIN_FREQ_HZ)
-    {
       targetFreq = LEDC_MIN_FREQ_HZ;
-    }
-    if (!outputOn || onChannel != activeChannel)
-    {
-      if (outputOn && onChannel != activeChannel)
-        ledc_stop(LEDC_MODE, onChannel, 0); // coil/pin swapped under us
-      // Latch 50% duty while the timer is fast, THEN drop to the real rate.
-      ledc_set_freq(LEDC_MODE, LEDC_RPM_TIMER, LEDC_LATCH_FREQ_HZ);
-      ledc_set_duty(LEDC_MODE, activeChannel, LEDC_DUTY_50);
-      ledc_update_duty(LEDC_MODE, activeChannel);
-      onChannel = activeChannel;
-      outputOn = true;
-    }
-    ledc_set_freq(LEDC_MODE, LEDC_RPM_TIMER, targetFreq);
+    // Program the real rate first, then enable the 50% square. No 5 kHz park.
+    ledc_set_freq(LEDC_RPM_MODE, LEDC_RPM_TIMER, targetFreq);
+    ledc_set_duty(LEDC_RPM_MODE, activeChannel, LEDC_DUTY_50);
+    ledc_update_duty(LEDC_RPM_MODE, activeChannel);
   }
-  else if (outputOn)
+  else
   {
-    ledc_stop(LEDC_MODE, activeChannel, 0);
-    outputOn = false;
+    ledc_stop(LEDC_RPM_MODE, activeChannel, 0);
   }
 }
 
