@@ -3,6 +3,7 @@
 #include "can2cluster_gps.h"
 #include "can2cluster_i2c.h"
 #include <driver/ledc.h>
+#include <driver/gpio.h>
 
 // Windowed frequency capture — shared by the hall, VR and RPM inputs. Deriving Hz
 // from a single edge-to-edge period turns tone-wheel / tooth-spacing jitter straight
@@ -148,33 +149,12 @@ void setupLedcOutputs()
   speedChannelConfig.hpoint = 0;
   ledc_channel_config(&speedChannelConfig);
 
-  ledc_timer_config_t rpmTimerConfig = {};
-  rpmTimerConfig.speed_mode = LEDC_RPM_MODE;
-  rpmTimerConfig.timer_num = LEDC_RPM_TIMER;
-  rpmTimerConfig.duty_resolution = LEDC_RESOLUTION;
-  rpmTimerConfig.freq_hz = LEDC_MIN_FREQ_HZ;
-  rpmTimerConfig.clk_cfg = LEDC_AUTO_CLK;
-  ledc_timer_config(&rpmTimerConfig);
-
-  ledc_channel_config_t coilChannelConfig = {};
-  coilChannelConfig.gpio_num = pinCoil;
-  coilChannelConfig.speed_mode = LEDC_RPM_MODE;
-  coilChannelConfig.channel = LEDC_RPM_COIL_CHANNEL;
-  coilChannelConfig.intr_type = LEDC_INTR_DISABLE;
-  coilChannelConfig.timer_sel = LEDC_RPM_TIMER;
-  coilChannelConfig.duty = LEDC_DUTY_OFF;
-  coilChannelConfig.hpoint = 0;
-  ledc_channel_config(&coilChannelConfig);
-
-  ledc_channel_config_t rpmPinChannelConfig = {};
-  rpmPinChannelConfig.gpio_num = pinRPM;
-  rpmPinChannelConfig.speed_mode = LEDC_RPM_MODE;
-  rpmPinChannelConfig.channel = LEDC_RPM_PIN_CHANNEL;
-  rpmPinChannelConfig.intr_type = LEDC_INTR_DISABLE;
-  rpmPinChannelConfig.timer_sel = LEDC_RPM_TIMER;
-  rpmPinChannelConfig.duty = LEDC_DUTY_OFF;
-  rpmPinChannelConfig.hpoint = 0;
-  ledc_channel_config(&rpmPinChannelConfig);
+  // Do not bind the tach pins here. Binding them to a timer parked at 2 Hz lets that
+  // rate reach the Spiyda, and each 250 ms half-period pegs the needle.
+  pinMode(pinCoil, OUTPUT);
+  digitalWrite(pinCoil, LOW);
+  pinMode(pinRPM, OUTPUT);
+  digitalWrite(pinRPM, LOW);
 }
 }
 
@@ -503,11 +483,31 @@ void diagTestTask(void *args)
   }
 }
 
+static void holdRpmPinLow(ledc_channel_t channel, int pin)
+{
+  ledc_stop(LEDC_RPM_MODE, channel, 0);
+  gpio_reset_pin((gpio_num_t)pin);
+  pinMode(pin, OUTPUT);
+  digitalWrite(pin, LOW);
+}
+
+// Spiyda counts edges and wants a 1-2 ms pulse, not a 50% square. A 2 Hz
+// square has a 250 ms half-period and pegs the needle once per cycle.
+static uint32_t rpmPulseDuty(uint32_t freqHz)
+{
+  uint32_t duty = (freqHz * 1536UL) / 1000UL; // 1.5 ms at 10-bit resolution
+  if (duty < 1) duty = 1;
+  if (duty > 200) duty = 200;
+  return duty;
+}
+
 // adjust output frequency
 void setFrequencyRPM(long frequencyHz)
 {
   static long lastFrequencyHz = -1;
   static bool lastCoilType = false;
+  static bool attached = false;
+  static int attachedPin = -1;
 
   if (frequencyHz == lastFrequencyHz && coilType == lastCoilType)
     return;
@@ -520,21 +520,26 @@ void setFrequencyRPM(long frequencyHz)
   int activePin = coilType ? pinCoil : pinRPM;
   int inactivePin = coilType ? pinRPM : pinCoil;
 
-  // Drop both pins out of LEDC before touching the timer. Reconfiguring a timer
-  // that still owns the tach pin emits a burst at the old rate, which the Spiyda
-  // counts as redline.
-  ledc_stop(LEDC_RPM_MODE, inactiveChannel, 0);
-  ledc_stop(LEDC_RPM_MODE, activeChannel, 0);
-  pinMode(inactivePin, OUTPUT);
-  digitalWrite(inactivePin, LOW);
-  pinMode(activePin, OUTPUT);
-  digitalWrite(activePin, LOW);
+  holdRpmPinLow(inactiveChannel, inactivePin);
 
-  if (frequencyHz > 0)
+  if (frequencyHz <= 0)
   {
-    uint32_t targetFreq = static_cast<uint32_t>(frequencyHz);
-    if (targetFreq < LEDC_MIN_FREQ_HZ)
-      targetFreq = LEDC_MIN_FREQ_HZ;
+    holdRpmPinLow(activeChannel, activePin);
+    attached = false;
+    attachedPin = -1;
+    return;
+  }
+
+  uint32_t targetFreq = static_cast<uint32_t>(frequencyHz);
+  if (targetFreq < LEDC_MIN_FREQ_HZ)
+    targetFreq = LEDC_MIN_FREQ_HZ;
+  uint32_t duty = rpmPulseDuty(targetFreq);
+
+  // Bind once, at the requested rate. Later changes only retune the timer so the
+  // pin is never dropped back onto the idle rate.
+  if (!attached || attachedPin != activePin)
+  {
+    holdRpmPinLow(activeChannel, activePin);
     ledc_timer_config_t rpmTimerConfig = {};
     rpmTimerConfig.speed_mode = LEDC_RPM_MODE;
     rpmTimerConfig.timer_num = LEDC_RPM_TIMER;
@@ -549,9 +554,16 @@ void setFrequencyRPM(long frequencyHz)
     channelConfig.channel = activeChannel;
     channelConfig.intr_type = LEDC_INTR_DISABLE;
     channelConfig.timer_sel = LEDC_RPM_TIMER;
-    channelConfig.duty = LEDC_DUTY_50;
+    channelConfig.duty = duty;
     channelConfig.hpoint = 0;
     ledc_channel_config(&channelConfig);
+    attached = true;
+    attachedPin = activePin;
+  }
+  else
+  {
+    ledc_set_freq(LEDC_RPM_MODE, LEDC_RPM_TIMER, targetFreq);
+    ledc_set_duty(LEDC_RPM_MODE, activeChannel, duty);
     ledc_update_duty(LEDC_RPM_MODE, activeChannel);
   }
 }
