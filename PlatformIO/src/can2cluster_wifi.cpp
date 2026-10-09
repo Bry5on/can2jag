@@ -211,12 +211,14 @@ static void applyCoolantExclusivity()
     useEMLShiftLight = false;
     testEML = false;
     if (dsgParkMode == "EML") dsgParkMode = "None";
+    if (statorOutput == 1) statorOutput = 0;
   }
   else if (coolantOutput == 2) // EPC pin taken by coolant
   {
     useEPCShiftLight = false;
     testEPC = false;
     if (dsgParkMode == "EPC") dsgParkMode = "None";
+    if (statorOutput == 2) statorOutput = 0;
   }
 }
 
