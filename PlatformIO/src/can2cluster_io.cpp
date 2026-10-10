@@ -544,33 +544,24 @@ void setFrequencyRPM(long frequencyHz)
     {
       if (outputOn && onChannel != activeChannel)
         ledc_stop(LEDC_MODE, onChannel, 0); // coil/pin swapped under us
-      // Latch 50% duty while the timer is fast so update_duty cannot trip
-      // the interrupt watchdog. The rate itself is set below.
-      ledc_set_freq(LEDC_MODE, LEDC_RPM_TIMER, LEDC_LATCH_FREQ_HZ);
+      // REF_TICK is 1 MHz. At 10 bits it covers ~0.02 Hz to 976 Hz, which is
+      // the whole tach range, so one ledc_set_freq() serves the sweep and a
+      // steady low reading. AUTO_CLK after a 5 kHz latch floors at ~76 Hz,
+      // and that is the 1500 rpm step. Latch the duty at 200 Hz: fast enough
+      // that update_duty cannot trip the watchdog, slow enough for this clock.
+      ledc_timer_config_t rpmTimerConfig = {};
+      rpmTimerConfig.speed_mode = LEDC_MODE;
+      rpmTimerConfig.timer_num = LEDC_RPM_TIMER;
+      rpmTimerConfig.duty_resolution = LEDC_RESOLUTION;
+      rpmTimerConfig.freq_hz = 200;
+      rpmTimerConfig.clk_cfg = LEDC_USE_REF_TICK;
+      ledc_timer_config(&rpmTimerConfig);
       ledc_set_duty(LEDC_MODE, activeChannel, LEDC_DUTY_50);
       ledc_update_duty(LEDC_MODE, activeChannel);
       onChannel = activeChannel;
       outputOn = true;
     }
-    // ledc_set_freq() keeps the divider from the 5 kHz latch and will not go
-    // below ~76 Hz, which is 1500 rpm on the 6-cyl Spiyda. Reconfigure only
-    // for those low rates. Above the floor, set_freq is the light call: the
-    // needle sweep retunes every 10 ms, and timer_config on each step stalls
-    // the ramp.
-    if (targetFreq < 80)
-    {
-      ledc_timer_config_t rpmTimerConfig = {};
-      rpmTimerConfig.speed_mode = LEDC_MODE;
-      rpmTimerConfig.timer_num = LEDC_RPM_TIMER;
-      rpmTimerConfig.duty_resolution = LEDC_RESOLUTION;
-      rpmTimerConfig.freq_hz = targetFreq;
-      rpmTimerConfig.clk_cfg = LEDC_AUTO_CLK;
-      ledc_timer_config(&rpmTimerConfig);
-    }
-    else
-    {
-      ledc_set_freq(LEDC_MODE, LEDC_RPM_TIMER, targetFreq);
-    }
+    ledc_set_freq(LEDC_MODE, LEDC_RPM_TIMER, targetFreq);
   }
   else if (outputOn)
   {
