@@ -555,11 +555,11 @@ void setFrequencyRPM(long frequencyHz)
   }
   else
   {
-    // ledcChangeFrequency() detaches and reattaches. That gap is the 4-6 pulse
-    // climb and the drop. The divider update leaves the pin running.
-    ledc_set_freq(LEDC_RPM_MODE, LEDC_RPM_TIMER, targetFreq);
-    ledc_set_duty(LEDC_RPM_MODE, activeChannel, duty);
-    ledc_update_duty(LEDC_RPM_MODE, activeChannel);
+    // ledc_set_freq() programs LEDC_RPM_TIMER, which is not the timer ledcAttach()
+    // allocated. The pin stayed at the first attach rate and the tach sat at ~700.
+    // ledcChangeFrequency() is the call that actually updates the divider.
+    ledcChangeFrequency((uint8_t)activePin, targetFreq, 10);
+    ledcWrite((uint8_t)activePin, duty);
   }
 }
 
