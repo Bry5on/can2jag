@@ -538,9 +538,11 @@ void setFrequencyRPM(long frequencyHz)
   uint32_t targetFreq = static_cast<uint32_t>(frequencyHz);
   if (targetFreq < LEDC_MIN_FREQ_HZ)
     targetFreq = LEDC_MIN_FREQ_HZ;
-  // 50% square. The 1.2 ms pulse was an impulse at the movement's resonant
-  // frequency; ZEVA tracked because it never did that.
-  uint32_t duty = 512;
+  // A 50% square pegged this gauge. Spiyda wants a 1-2 ms pulse; 1.5 ms at
+  // 10-bit, capped so a high rate cannot turn it back into a wide pulse.
+  uint32_t duty = (targetFreq * 1536UL) / 1000UL;
+  if (duty < 1) duty = 1;
+  if (duty > 200) duty = 200;
 
   // ledc_timer_config() on this core leaves the timer at the 10-bit floor
   // (~1.2 Hz). The Arduino driver programs the divider, which is what the
