@@ -1,12 +1,12 @@
 #include "can2cluster_defs.h"
 
 // setup - cluster RPM & speed limits
-uint16_t clusterRPMLimit = 7000;
+uint16_t clusterRPMLimit = 5500;
 uint16_t shiftLimit = 6000;
 uint8_t shiftFlashes = 3;
 uint8_t sweepSpeed = 18;
 uint16_t maxSpeed = 200;
-uint16_t maxRPM = 230;
+uint16_t maxRPM = 321;
 uint16_t maxFreqHall = 200;
 uint16_t maxFreqVR = 200;
 bool useEPCShiftLight = false;
