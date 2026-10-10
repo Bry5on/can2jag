@@ -491,12 +491,15 @@ static void holdRpmPinLow(ledc_channel_t channel, int pin)
   digitalWrite(pin, LOW);
 }
 
-// Spiyda counts edges. A 50% square pegs this RVI; a sub-millisecond pulse
-// makes the needle beat at the pulse rate. 5% keeps a short pulse at low rpm
-// and stays inside the 1-2 ms window once the rate is up.
-static uint32_t rpmPulseDuty(uint32_t)
+// Spiyda counts edges. A fixed 5% pulse is 7 ms at the ~7 Hz a 219 rpm command
+// produces, so the RVI climbs for a few edges and falls in the long gap. 1.2 ms
+// is inside the 1-2 ms window at every rate this gauge uses.
+static uint32_t rpmPulseDuty(uint32_t freqHz)
 {
-  return 51; // 5% of 10-bit full scale
+  uint32_t duty = (freqHz * 1229UL) / 1000UL; // 1.2 ms at 10-bit resolution
+  if (duty < 1) duty = 1;
+  if (duty > 180) duty = 180;
+  return duty;
 }
 
 // adjust output frequency
@@ -552,8 +555,11 @@ void setFrequencyRPM(long frequencyHz)
   }
   else
   {
-    ledcChangeFrequency((uint8_t)activePin, targetFreq, 10);
-    ledcWrite((uint8_t)activePin, duty);
+    // ledcChangeFrequency() detaches and reattaches. That gap is the 4-6 pulse
+    // climb and the drop. The divider update leaves the pin running.
+    ledc_set_freq(LEDC_RPM_MODE, LEDC_RPM_TIMER, targetFreq);
+    ledc_set_duty(LEDC_RPM_MODE, activeChannel, duty);
+    ledc_update_duty(LEDC_RPM_MODE, activeChannel);
   }
 }
 
