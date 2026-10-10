@@ -394,12 +394,11 @@ void onBodyRX(const twai_message_t &frame)
   }
 
   // GS450H VCU 0x0AA (11-bit): 
-  //   b1 = mph*2, b2 = stator C, b3 = inverter water C,
+  //   b1 = mph*2, b2 = stator C, b3 = inverter water C (unused here),
   //   b4/b5 = shaft RPM LE, b6/b7 = |amps|*10 LE
   if (useGs450h && frame.identifier == 0x0AAu && frame.data_length_code >= 7)
   {
     vehicleStatorTemp  = frame.data[2];
-    vehicleCoolantTemp = frame.data[3];
     // Shaft rpm (bytes 4/5, signed LE) is proportional to road speed.
     // 46.0 rpm/mph from the s-12 log => 28.6 rpm/kph. One count is 0.035 kph.
     // Stored as kph; useMPH defaults false, so the gauge wants kph.
@@ -407,6 +406,12 @@ void onBodyRX(const twai_message_t &frame)
     aftermarketSpeed = fabs((double)shaftRpm) / 28.6;
     // tach-ammeter: display amps*10 as RPM
     vehicleRPMCAN = (uint16_t)frame.data[6] | ((uint16_t)frame.data[7] << 8); // |A|*10
+  }
+
+  // GS450H VCU 0x0AC: b2 = inductor C. Drives the coolant gauge.
+  if (useGs450h && frame.identifier == 0x0ACu && frame.data_length_code >= 3)
+  {
+    vehicleCoolantTemp = frame.data[2];
   }
 
   // Aftermarket / Custom CAN speed input — parsed independently of the VW switch table
