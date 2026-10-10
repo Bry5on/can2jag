@@ -491,14 +491,23 @@ static void holdRpmPinLow(ledc_channel_t channel, int pin)
   digitalWrite(pin, LOW);
 }
 
-// Spiyda counts edges. A fixed 5% pulse is 7 ms at the ~7 Hz a 219 rpm command
-// produces, so the RVI climbs for a few edges and falls in the long gap. 1.2 ms
-// is inside the 1-2 ms window at every rate this gauge uses.
+// 6-cyl Spiyda counts edges at f = RPM/20 and wants a 1-2 ms pulse.
+// A 50% square pegged the needle. A fixed 1.5 ms pulse saturated the movement
+// near 1900 rpm and, at idle, left a long off-time the needle fell through.
+// Width tapers from 2.0 ms at 1000 rpm to 0.8 ms at 5500 so one pot setting
+// can cover the face, and the train is never torn down on a steady reading.
+static uint32_t rpmPulseWidthUs(uint32_t freqHz)
+{
+  if (freqHz <= 50) return 2000;   // <= 1000 rpm
+  if (freqHz >= 275) return 800;   // >= 5500 rpm
+  return 2000 - ((freqHz - 50) * 1200U) / 225U;
+}
+
 static uint32_t rpmPulseDuty(uint32_t freqHz)
 {
-  uint32_t duty = (freqHz * 1229UL) / 1000UL; // 1.2 ms at 10-bit resolution
+  uint32_t duty = (freqHz * rpmPulseWidthUs(freqHz) * 1024UL) / 1000000UL;
   if (duty < 1) duty = 1;
-  if (duty > 180) duty = 180;
+  if (duty > 400) duty = 400;
   return duty;
 }
 
@@ -509,62 +518,55 @@ void setFrequencyRPM(long frequencyHz)
   static bool lastCoilType = false;
   static bool attached = false;
   static int attachedPin = -1;
+  static uint32_t lastDuty = 0;
 
-  // Ignore 1 Hz chatter. A retune restarts the LEDC period and the needle hunts.
   if (coilType == lastCoilType && lastFrequencyHz >= 0 &&
-      (frequencyHz > lastFrequencyHz ? frequencyHz - lastFrequencyHz : lastFrequencyHz - frequencyHz) <= 3)
+      (frequencyHz > lastFrequencyHz ? frequencyHz - lastFrequencyHz : lastFrequencyHz - frequencyHz) <= 2)
     return;
 
   lastFrequencyHz = frequencyHz;
   lastCoilType = coilType;
 
-  ledc_channel_t activeChannel = coilType ? LEDC_RPM_COIL_CHANNEL : LEDC_RPM_PIN_CHANNEL;
-  ledc_channel_t inactiveChannel = coilType ? LEDC_RPM_PIN_CHANNEL : LEDC_RPM_COIL_CHANNEL;
   int activePin = coilType ? pinCoil : pinRPM;
-  int inactivePin = coilType ? pinRPM : pinCoil;
-
-  holdRpmPinLow(inactiveChannel, inactivePin);
 
   if (frequencyHz <= 0)
   {
     if (attached)
       ledcDetach(attachedPin);
-    holdRpmPinLow(activeChannel, activePin);
+    pinMode(activePin, OUTPUT);
+    digitalWrite(activePin, LOW);
     attached = false;
     attachedPin = -1;
+    lastDuty = 0;
     return;
   }
 
   uint32_t targetFreq = static_cast<uint32_t>(frequencyHz);
   if (targetFreq < LEDC_MIN_FREQ_HZ)
     targetFreq = LEDC_MIN_FREQ_HZ;
-  // A 50% square pegged this gauge. Spiyda wants a 1-2 ms pulse. Keep the
-  // width at 1.5 ms through redline so a 1000 rpm pot setting still reads
-  // 2000 at 2000. The old cap of 200 started shortening it near 2600 rpm.
-  uint32_t duty = (targetFreq * 1536UL) / 1000UL;
-  if (duty < 1) duty = 1;
-  if (duty > 450) duty = 450;
+  uint32_t duty = rpmPulseDuty(targetFreq);
 
-  // ledc_timer_config() on this core leaves the timer at the 10-bit floor
-  // (~1.2 Hz). The Arduino driver programs the divider, which is what the
-  // Spiyda has to receive or it pegs once per slow period.
+  // ledc_set_freq() writes a timer this pin is not on, so the rate froze.
+  // ledcAttach/ledcChangeFrequency are the calls that move the divider.
+  // ledcWrite restarts the period, so it is only called when the width changes.
   if (!attached || attachedPin != activePin)
   {
     if (attached)
       ledcDetach(attachedPin);
-    holdRpmPinLow(activeChannel, activePin);
     ledcAttach((uint8_t)activePin, targetFreq, 10);
     ledcWrite((uint8_t)activePin, duty);
     attached = true;
     attachedPin = activePin;
+    lastDuty = duty;
+    return;
   }
-  else
+
+  ledcChangeFrequency((uint8_t)activePin, targetFreq, 10);
+  uint32_t dutyDelta = duty > lastDuty ? duty - lastDuty : lastDuty - duty;
+  if (dutyDelta > 8)
   {
-    // ledc_set_freq() programs LEDC_RPM_TIMER, which is not the timer ledcAttach()
-    // allocated. The pin stayed at the first attach rate and the tach sat at ~700.
-    // ledcChangeFrequency() is the call that actually updates the divider.
-    // Duty is already 50%. Rewriting it restarts the period and the movement rings.
-    ledcChangeFrequency((uint8_t)activePin, targetFreq, 10);
+    ledcWrite((uint8_t)activePin, duty);
+    lastDuty = duty;
   }
 }
 
