@@ -1,7 +1,20 @@
 {
   "product": "Can2Cluster",
-  "latest": "3.24.7",
+  "latest": "3.24.8",
   "releases": [
+    {
+      "version": "3.24.8",
+      "channel": "stable",
+      "date": "2026-10-09",
+      "ota": true,
+      "notes": "Needle sweep runs from zero. Tach timer is clocked from REF_TICK so ledc_set_freq covers the whole range instead of stepping at 1500 rpm.",
+      "firmware": {
+        "path": "V3.24.8/firmware.bin"
+      },
+      "filesystem": {
+        "path": "V3.24.8/littlefs.bin"
+      }
+    },
     {
       "version": "3.24.7",
       "channel": "stable",
