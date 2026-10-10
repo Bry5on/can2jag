@@ -538,7 +538,9 @@ void setFrequencyRPM(long frequencyHz)
   uint32_t targetFreq = static_cast<uint32_t>(frequencyHz);
   if (targetFreq < LEDC_MIN_FREQ_HZ)
     targetFreq = LEDC_MIN_FREQ_HZ;
-  uint32_t duty = rpmPulseDuty(targetFreq);
+  // 50% square. The 1.2 ms pulse was an impulse at the movement's resonant
+  // frequency; ZEVA tracked because it never did that.
+  uint32_t duty = 512;
 
   // ledc_timer_config() on this core leaves the timer at the 10-bit floor
   // (~1.2 Hz). The Arduino driver programs the divider, which is what the
@@ -558,8 +560,8 @@ void setFrequencyRPM(long frequencyHz)
     // ledc_set_freq() programs LEDC_RPM_TIMER, which is not the timer ledcAttach()
     // allocated. The pin stayed at the first attach rate and the tach sat at ~700.
     // ledcChangeFrequency() is the call that actually updates the divider.
+    // Duty is already 50%. Rewriting it restarts the period and the movement rings.
     ledcChangeFrequency((uint8_t)activePin, targetFreq, 10);
-    ledcWrite((uint8_t)activePin, duty);
   }
 }
 
