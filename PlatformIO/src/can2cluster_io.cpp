@@ -538,11 +538,12 @@ void setFrequencyRPM(long frequencyHz)
   uint32_t targetFreq = static_cast<uint32_t>(frequencyHz);
   if (targetFreq < LEDC_MIN_FREQ_HZ)
     targetFreq = LEDC_MIN_FREQ_HZ;
-  // A 50% square pegged this gauge. Spiyda wants a 1-2 ms pulse; 1.5 ms at
-  // 10-bit, capped so a high rate cannot turn it back into a wide pulse.
+  // A 50% square pegged this gauge. Spiyda wants a 1-2 ms pulse. Keep the
+  // width at 1.5 ms through redline so a 1000 rpm pot setting still reads
+  // 2000 at 2000. The old cap of 200 started shortening it near 2600 rpm.
   uint32_t duty = (targetFreq * 1536UL) / 1000UL;
   if (duty < 1) duty = 1;
-  if (duty > 200) duty = 200;
+  if (duty > 450) duty = 450;
 
   // ledc_timer_config() on this core leaves the timer at the 10-bit floor
   // (~1.2 Hz). The Arduino driver programs the divider, which is what the
