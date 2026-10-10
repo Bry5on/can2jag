@@ -1,7 +1,20 @@
 {
   "product": "Can2Cluster",
-  "latest": "3.24.8",
+  "latest": "3.24.9",
   "releases": [
+    {
+      "version": "3.24.9",
+      "channel": "stable",
+      "date": "2026-10-09",
+      "ota": true,
+      "notes": "Stator curve is an editable 8-point temp/duty table, prefilled with the saved curve. Load stator curve on EML commits it and selects EML.",
+      "firmware": {
+        "path": "V3.24.9/firmware.bin"
+      },
+      "filesystem": {
+        "path": "V3.24.9/littlefs.bin"
+      }
+    },
     {
       "version": "3.24.8",
       "channel": "stable",
