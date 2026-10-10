@@ -4,6 +4,7 @@
 #include "can2cluster_i2c.h"
 #include <driver/ledc.h>
 #include <driver/gpio.h>
+#include <esp_timer.h>
 
 // Windowed frequency capture — shared by the hall, VR and RPM inputs. Deriving Hz
 // from a single edge-to-edge period turns tone-wheel / tooth-spacing jitter straight
@@ -491,10 +492,15 @@ static void holdRpmPinLow(ledc_channel_t channel, int pin)
   digitalWrite(pin, LOW);
 }
 
-// 6-cyl Spiyda counts edges at f = RPM/20. Width tapers so idle does not
-// chop and redline does not saturate. The 1.5 Hz swing is the LEDC 10-bit
-// floor: ledcChangeFrequency() calls ledc_timer_config(), and that call leaves
-// this timer at ~1.2 Hz. It is not used on a running output.
+// The tach wants a few hundred edges a second, each 1-2 ms wide. LEDC is
+// the wrong peripheral for that: every way of retuning it on this core drops
+// the timer to its 1.2 Hz floor or restarts the period. A hardware timer that
+// raises the pin and lowers it does not have a divider to get wrong.
+static esp_timer_handle_t rpmPeriodTimer = nullptr;
+static esp_timer_handle_t rpmWidthTimer = nullptr;
+static int rpmOutPin = -1;
+static uint32_t rpmWidthUs = 1500;
+
 static uint32_t rpmPulseWidthUs(uint32_t freqHz)
 {
   if (freqHz <= 50) return 2000;   // <= 1000 rpm
@@ -502,21 +508,38 @@ static uint32_t rpmPulseWidthUs(uint32_t freqHz)
   return 2000 - ((freqHz - 50) * 1200U) / 225U;
 }
 
-static uint32_t rpmPulseDuty(uint32_t freqHz)
+static void rpmEndPulse(void *)
 {
-  uint32_t duty = (freqHz * rpmPulseWidthUs(freqHz) * 1024UL) / 1000000UL;
-  if (duty < 1) duty = 1;
-  if (duty > 400) duty = 400;
-  return duty;
+  if (rpmOutPin >= 0)
+    gpio_set_level((gpio_num_t)rpmOutPin, 0);
 }
 
-// Arduino ledcAttachChannel(pin, ..., channel 2) binds group 0, timer 1.
-// That is LEDC_LOW_SPEED_MODE / LEDC_TIMER_1, not LEDC_RPM_MODE.
-static void rpmSetRunning(uint32_t freqHz, uint32_t duty)
+static void rpmStartPulse(void *)
 {
-  ledc_set_freq(LEDC_LOW_SPEED_MODE, LEDC_TIMER_1, freqHz);
-  ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_2, duty);
-  ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_2);
+  if (rpmOutPin < 0)
+    return;
+  gpio_set_level((gpio_num_t)rpmOutPin, 1);
+  esp_timer_stop(rpmWidthTimer);
+  esp_timer_start_once(rpmWidthTimer, rpmWidthUs);
+}
+
+static void rpmTimersInit()
+{
+  if (rpmPeriodTimer)
+    return;
+  const esp_timer_create_args_t widthArgs = {.callback = rpmEndPulse, .name = "rpmWidth"};
+  const esp_timer_create_args_t periodArgs = {.callback = rpmStartPulse, .name = "rpmPeriod"};
+  esp_timer_create(&widthArgs, &rpmWidthTimer);
+  esp_timer_create(&periodArgs, &rpmPeriodTimer);
+}
+
+static void rpmPinTake(int pin)
+{
+  ledcDetach((uint8_t)pin);
+  gpio_reset_pin((gpio_num_t)pin);
+  gpio_set_direction((gpio_num_t)pin, GPIO_MODE_OUTPUT);
+  gpio_set_level((gpio_num_t)pin, 0);
+  rpmOutPin = pin;
 }
 
 // adjust output frequency
@@ -524,8 +547,6 @@ void setFrequencyRPM(long frequencyHz)
 {
   static long lastFrequencyHz = -1;
   static bool lastCoilType = false;
-  static bool attached = false;
-  static int attachedPin = -1;
 
   if (coilType == lastCoilType && lastFrequencyHz >= 0 &&
       (frequencyHz > lastFrequencyHz ? frequencyHz - lastFrequencyHz : lastFrequencyHz - frequencyHz) <= 2)
@@ -533,41 +554,27 @@ void setFrequencyRPM(long frequencyHz)
 
   lastFrequencyHz = frequencyHz;
   lastCoilType = coilType;
+  rpmTimersInit();
 
   int activePin = coilType ? pinCoil : pinRPM;
+  if (rpmOutPin != activePin)
+    rpmPinTake(activePin);
+
+  esp_timer_stop(rpmPeriodTimer);
+  esp_timer_stop(rpmWidthTimer);
+  gpio_set_level((gpio_num_t)rpmOutPin, 0);
 
   if (frequencyHz <= 0)
-  {
-    if (attached)
-      ledcDetach(attachedPin);
-    pinMode(activePin, OUTPUT);
-    digitalWrite(activePin, LOW);
-    attached = false;
-    attachedPin = -1;
     return;
-  }
 
   uint32_t targetFreq = static_cast<uint32_t>(frequencyHz);
   if (targetFreq < LEDC_MIN_FREQ_HZ)
     targetFreq = LEDC_MIN_FREQ_HZ;
-  uint32_t duty = rpmPulseDuty(targetFreq);
+  if (targetFreq > 400)
+    targetFreq = 400;
+  rpmWidthUs = rpmPulseWidthUs(targetFreq);
 
-  if (!attached || attachedPin != activePin)
-  {
-    if (attached)
-      ledcDetach(attachedPin);
-    // Channel 2 is timer 1 in the low-speed group. Own it explicitly so the
-    // divider update below hits the timer the pin is actually on.
-    ledcAttachChannel((uint8_t)activePin, targetFreq, 10, 2);
-    ledcWrite((uint8_t)activePin, duty);
-    attached = true;
-    attachedPin = activePin;
-    return;
-  }
-
-  // No ledcChangeFrequency() and no ledc_timer_config() here. Both drop this
-  // timer to the 1.2 Hz floor, which is the swing above 2000 rpm.
-  rpmSetRunning(targetFreq, duty);
+  esp_timer_start_periodic(rpmPeriodTimer, 1000000UL / targetFreq);
 }
 
 // adjust output frequency
