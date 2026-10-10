@@ -201,7 +201,9 @@ void updateSpeed(void *args)
       // GS450H speed is kph in 0.035 steps. Carry it past the int cast so the
       // frequency output can move in 0.1 kph. 10 Hz per displayed unit, so
       // 1 Hz at the speedo motor is 0.1 kph (or 0.1 mph if useMPH is on).
-      double preciseSpeed = (useAftermarket || useGs450h) ? aftermarketSpeed : -1.0;
+      // The diagnostic test must win over the live CAN source, or a test with
+      // useGs450h on drives the pin from aftermarketSpeed (usually 0).
+      double preciseSpeed = (!testSpeedo && (useAftermarket || useGs450h)) ? aftermarketSpeed : -1.0;
 
       if (useMPH)
       {
