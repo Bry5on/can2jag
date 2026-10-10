@@ -253,7 +253,7 @@ void updateRPM(void *args)
         }
       }
 
-      frequencyRPM = vehicleRPM / 20; // 6-cyl Spiyda: 3 pulses/rev, f = RPM/20
+      frequencyRPM = map(vehicleRPM, 0, clusterRPMLimit, 0, maxRPM);
       setFrequencyRPM(frequencyRPM); // minimum speed may command 0 and setFreq. will cause crash, so +1 to error 'catch'
     }
     vTaskDelay(pdMS_TO_TICKS(rpmPause));
