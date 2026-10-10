@@ -491,11 +491,10 @@ static void holdRpmPinLow(ledc_channel_t channel, int pin)
   digitalWrite(pin, LOW);
 }
 
-// 6-cyl Spiyda counts edges at f = RPM/20 and wants a 1-2 ms pulse.
-// A 50% square pegged the needle. A fixed 1.5 ms pulse saturated the movement
-// near 1900 rpm and, at idle, left a long off-time the needle fell through.
-// Width tapers from 2.0 ms at 1000 rpm to 0.8 ms at 5500 so one pot setting
-// can cover the face, and the train is never torn down on a steady reading.
+// 6-cyl Spiyda counts edges at f = RPM/20. Width tapers so idle does not
+// chop and redline does not saturate. The 1.5 Hz swing is the LEDC 10-bit
+// floor: ledcChangeFrequency() calls ledc_timer_config(), and that call leaves
+// this timer at ~1.2 Hz. It is not used on a running output.
 static uint32_t rpmPulseWidthUs(uint32_t freqHz)
 {
   if (freqHz <= 50) return 2000;   // <= 1000 rpm
@@ -511,6 +510,15 @@ static uint32_t rpmPulseDuty(uint32_t freqHz)
   return duty;
 }
 
+// Arduino ledcAttachChannel(pin, ..., channel 2) binds group 0, timer 1.
+// That is LEDC_LOW_SPEED_MODE / LEDC_TIMER_1, not LEDC_RPM_MODE.
+static void rpmSetRunning(uint32_t freqHz, uint32_t duty)
+{
+  ledc_set_freq(LEDC_LOW_SPEED_MODE, LEDC_TIMER_1, freqHz);
+  ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_2, duty);
+  ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_2);
+}
+
 // adjust output frequency
 void setFrequencyRPM(long frequencyHz)
 {
@@ -518,7 +526,6 @@ void setFrequencyRPM(long frequencyHz)
   static bool lastCoilType = false;
   static bool attached = false;
   static int attachedPin = -1;
-  static uint32_t lastDuty = 0;
 
   if (coilType == lastCoilType && lastFrequencyHz >= 0 &&
       (frequencyHz > lastFrequencyHz ? frequencyHz - lastFrequencyHz : lastFrequencyHz - frequencyHz) <= 2)
@@ -537,7 +544,6 @@ void setFrequencyRPM(long frequencyHz)
     digitalWrite(activePin, LOW);
     attached = false;
     attachedPin = -1;
-    lastDuty = 0;
     return;
   }
 
@@ -546,28 +552,22 @@ void setFrequencyRPM(long frequencyHz)
     targetFreq = LEDC_MIN_FREQ_HZ;
   uint32_t duty = rpmPulseDuty(targetFreq);
 
-  // ledc_set_freq() writes a timer this pin is not on, so the rate froze.
-  // ledcAttach/ledcChangeFrequency are the calls that move the divider.
-  // ledcWrite restarts the period, so it is only called when the width changes.
   if (!attached || attachedPin != activePin)
   {
     if (attached)
       ledcDetach(attachedPin);
-    ledcAttach((uint8_t)activePin, targetFreq, 10);
+    // Channel 2 is timer 1 in the low-speed group. Own it explicitly so the
+    // divider update below hits the timer the pin is actually on.
+    ledcAttachChannel((uint8_t)activePin, targetFreq, 10, 2);
     ledcWrite((uint8_t)activePin, duty);
     attached = true;
     attachedPin = activePin;
-    lastDuty = duty;
     return;
   }
 
-  ledcChangeFrequency((uint8_t)activePin, targetFreq, 10);
-  uint32_t dutyDelta = duty > lastDuty ? duty - lastDuty : lastDuty - duty;
-  if (dutyDelta > 8)
-  {
-    ledcWrite((uint8_t)activePin, duty);
-    lastDuty = duty;
-  }
+  // No ledcChangeFrequency() and no ledc_timer_config() here. Both drop this
+  // timer to the 1.2 Hz floor, which is the swing above 2000 rpm.
+  rpmSetRunning(targetFreq, duty);
 }
 
 // adjust output frequency
