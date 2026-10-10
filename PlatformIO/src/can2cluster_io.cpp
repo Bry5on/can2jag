@@ -535,7 +535,6 @@ void setFrequencyRPM(long frequencyHz)
 
   static ledc_channel_t onChannel = LEDC_RPM_COIL_CHANNEL;
   static bool outputOn = false;
-  static bool dutyLatched = false;
 
   ledc_stop(LEDC_MODE, inactiveChannel, 0); // immediate, no duty latch
 
@@ -544,18 +543,20 @@ void setFrequencyRPM(long frequencyHz)
     uint32_t targetFreq = static_cast<uint32_t>(frequencyHz);
     if (targetFreq < LEDC_MIN_FREQ_HZ)
       targetFreq = LEDC_MIN_FREQ_HZ;
-    if (onChannel != activeChannel && outputOn)
-      ledc_stop(LEDC_MODE, onChannel, 0); // coil/pin swapped under us
-    // Duty is latched once per boot, at 200 Hz, so update_duty cannot trip
-    // the watchdog. Coming off 0 only changes the frequency.
-    if (!dutyLatched || onChannel != activeChannel)
+    // ledc_stop() kills the channel. set_freq alone will not restart it, so
+    // every rise off 0 has to set the duty again. The timer clock is left as
+    // configured at boot: reconfiguring it here is the 200 Hz jump.
+    if (!outputOn || onChannel != activeChannel)
     {
+      if (outputOn && onChannel != activeChannel)
+        ledc_stop(LEDC_MODE, onChannel, 0);
+      uint32_t latch = targetFreq < 80 ? 80 : targetFreq;
+      ledc_set_freq(LEDC_MODE, LEDC_RPM_TIMER, latch);
       ledc_set_duty(LEDC_MODE, activeChannel, LEDC_DUTY_50);
       ledc_update_duty(LEDC_MODE, activeChannel);
-      dutyLatched = true;
+      onChannel = activeChannel;
+      outputOn = true;
     }
-    onChannel = activeChannel;
-    outputOn = true;
     ledc_set_freq(LEDC_MODE, LEDC_RPM_TIMER, targetFreq);
   }
   else if (outputOn)
