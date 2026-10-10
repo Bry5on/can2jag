@@ -322,6 +322,13 @@ void setupWebRoutes()
     doc["statorOutput"] = statorOutput == 1 ? "EML" : (statorOutput == 2 ? "EPC" : "Off");
     doc["statorTemp"] = vehicleStatorTemp;
     doc["statorDuty"] = statorAppliedDuty;
+    JsonArray statorTemps = doc["statorCalTemp"].to<JsonArray>();
+    JsonArray statorDuties = doc["statorCalDuty"].to<JsonArray>();
+    for (uint8_t i = 0; i < statorCalCount && i < COOLANT_CAL_MAX; i++)
+    {
+      statorTemps.add(statorCalTemp[i]);
+      statorDuties.add(statorCalDuty[i]);
+    }
     doc["coolantPwmFreq"] = coolantPwmFreq;
     doc["coolantWarnTemp"] = coolantWarnTemp;
     
@@ -588,14 +595,49 @@ void setupWebRoutes()
     }
 
     if (key == "statorLoadCurve") {
-      const int16_t temps[] = {0, 15, 20, 60, 80, 110, 120};
-      const uint16_t duties[] = {60, 110, 120, 170, 220, 370, 470};
-      statorCalCount = 7;
-      for (uint8_t i = 0; i < statorCalCount; i++)
+      JsonArray rows = value.as<JsonArray>();
+      uint8_t n = 0;
+      if (!rows.isNull())
       {
-        statorCalTemp[i] = temps[i];
-        statorCalDuty[i] = duties[i];
+        for (JsonVariant row : rows)
+        {
+          if (n >= COOLANT_CAL_MAX) break;
+          if (!row.is<JsonArray>()) continue;
+          JsonArray pair = row.as<JsonArray>();
+          statorCalTemp[n] = pair[0].as<int>();
+          int duty = pair[1].as<int>();
+          if (duty < 0) duty = 0;
+          if (duty > 1023) duty = 1023;
+          statorCalDuty[n] = (uint16_t)duty;
+          n++;
+        }
       }
+      if (n == 0)
+      {
+        const int16_t temps[] = {0, 15, 20, 60, 80, 110, 120};
+        const uint16_t duties[] = {60, 110, 120, 170, 220, 370, 470};
+        n = 7;
+        for (uint8_t i = 0; i < n; i++)
+        {
+          statorCalTemp[i] = temps[i];
+          statorCalDuty[i] = duties[i];
+        }
+      }
+      for (uint8_t i = 1; i < n; i++)
+      {
+        int16_t t = statorCalTemp[i];
+        uint16_t d = statorCalDuty[i];
+        int j = i;
+        while (j > 0 && statorCalTemp[j - 1] > t)
+        {
+          statorCalTemp[j] = statorCalTemp[j - 1];
+          statorCalDuty[j] = statorCalDuty[j - 1];
+          j--;
+        }
+        statorCalTemp[j] = t;
+        statorCalDuty[j] = d;
+      }
+      statorCalCount = n;
       statorCalMode = false;
       if (coolantOutput != 1)
         statorOutput = 1; // EML, unless coolant already owns it
