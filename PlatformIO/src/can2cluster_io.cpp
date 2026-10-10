@@ -544,14 +544,24 @@ void setFrequencyRPM(long frequencyHz)
     {
       if (outputOn && onChannel != activeChannel)
         ledc_stop(LEDC_MODE, onChannel, 0); // coil/pin swapped under us
-      // Latch 50% duty while the timer is fast, THEN drop to the real rate.
+      // Latch 50% duty while the timer is fast so update_duty cannot trip
+      // the interrupt watchdog. The rate itself is set below.
       ledc_set_freq(LEDC_MODE, LEDC_RPM_TIMER, LEDC_LATCH_FREQ_HZ);
       ledc_set_duty(LEDC_MODE, activeChannel, LEDC_DUTY_50);
       ledc_update_duty(LEDC_MODE, activeChannel);
       onChannel = activeChannel;
       outputOn = true;
     }
-    ledc_set_freq(LEDC_MODE, LEDC_RPM_TIMER, targetFreq);
+    // ledc_set_freq() keeps the divider from the 5 kHz latch and will not go
+    // below ~76 Hz. On the 6-cyl Spiyda that is 1500 rpm, which is the floor
+    // seen for every test under 2500. Reconfigure the timer at the target.
+    ledc_timer_config_t rpmTimerConfig = {};
+    rpmTimerConfig.speed_mode = LEDC_MODE;
+    rpmTimerConfig.timer_num = LEDC_RPM_TIMER;
+    rpmTimerConfig.duty_resolution = LEDC_RESOLUTION;
+    rpmTimerConfig.freq_hz = targetFreq;
+    rpmTimerConfig.clk_cfg = LEDC_AUTO_CLK;
+    ledc_timer_config(&rpmTimerConfig);
   }
   else if (outputOn)
   {
