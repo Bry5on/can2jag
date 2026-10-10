@@ -534,35 +534,41 @@ void setFrequencyRPM(long frequencyHz)
   ledc_channel_t inactiveChannel = coilType ? LEDC_RPM_PIN_CHANNEL : LEDC_RPM_COIL_CHANNEL;
 
   static ledc_channel_t onChannel = LEDC_RPM_COIL_CHANNEL;
-  static bool outputOn = false;
+  static bool dutyOn = false;
 
-  ledc_stop(LEDC_MODE, inactiveChannel, 0); // immediate, no duty latch
+  // Never ledc_stop() the active channel. Stopping it means the next rise
+  // has to restart it, and that restart is the jump. The inactive channel
+  // is stopped once so it cannot drive the other pin.
+  if (inactiveChannel != onChannel)
+    ledc_stop(LEDC_MODE, inactiveChannel, 0);
 
   if (frequencyHz > 0)
   {
     uint32_t targetFreq = static_cast<uint32_t>(frequencyHz);
     if (targetFreq < LEDC_MIN_FREQ_HZ)
       targetFreq = LEDC_MIN_FREQ_HZ;
-    // ledc_stop() kills the channel. set_freq alone will not restart it, so
-    // every rise off 0 has to set the duty again. The timer clock is left as
-    // configured at boot: reconfiguring it here is the 200 Hz jump.
-    if (!outputOn || onChannel != activeChannel)
+    if (onChannel != activeChannel)
     {
-      if (outputOn && onChannel != activeChannel)
-        ledc_stop(LEDC_MODE, onChannel, 0);
-      uint32_t latch = targetFreq < 80 ? 80 : targetFreq;
-      ledc_set_freq(LEDC_MODE, LEDC_RPM_TIMER, latch);
+      ledc_set_duty(LEDC_MODE, onChannel, LEDC_DUTY_OFF);
+      ledc_update_duty(LEDC_MODE, onChannel);
+      onChannel = activeChannel;
+      dutyOn = false;
+    }
+    // 0% duty while idle, so the pin sits low and the gauge sees nothing.
+    // Coming off 0 only restores the 50% duty; the timer is never rebuilt.
+    if (!dutyOn)
+    {
       ledc_set_duty(LEDC_MODE, activeChannel, LEDC_DUTY_50);
       ledc_update_duty(LEDC_MODE, activeChannel);
-      onChannel = activeChannel;
-      outputOn = true;
+      dutyOn = true;
     }
     ledc_set_freq(LEDC_MODE, LEDC_RPM_TIMER, targetFreq);
   }
-  else if (outputOn)
+  else if (dutyOn)
   {
-    ledc_stop(LEDC_MODE, activeChannel, 0);
-    outputOn = false;
+    ledc_set_duty(LEDC_MODE, activeChannel, LEDC_DUTY_OFF);
+    ledc_update_duty(LEDC_MODE, activeChannel);
+    dutyOn = false;
   }
 }
 
