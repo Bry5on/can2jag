@@ -491,12 +491,12 @@ static void holdRpmPinLow(ledc_channel_t channel, int pin)
   digitalWrite(pin, LOW);
 }
 
-// Spiyda counts edges. A short pulse lets the RVI movement fall between edges,
-// so the needle beats at the pulse rate and that beat speeds up with rpm.
-// The ZEVA output that holds this gauge is a square wave, so steady state is 50%.
+// Spiyda counts edges. A 50% square pegs this RVI; a sub-millisecond pulse
+// makes the needle beat at the pulse rate. 5% keeps a short pulse at low rpm
+// and stays inside the 1-2 ms window once the rate is up.
 static uint32_t rpmPulseDuty(uint32_t)
 {
-  return 512;
+  return 51; // 5% of 10-bit full scale
 }
 
 // adjust output frequency
