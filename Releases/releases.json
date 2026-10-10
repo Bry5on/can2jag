@@ -1,7 +1,20 @@
 {
   "product": "Can2Cluster",
-  "latest": "3.24.1",
+  "latest": "3.24.6",
   "releases": [
+    {
+      "version": "3.24.6",
+      "channel": "stable",
+      "date": "2026-10-09",
+      "ota": true,
+      "notes": "Tach defaults to 5500 rpm and 321 Hz for the 6-cylinder Spiyda. Timer is reconfigured at the target rate so the gauge can read below 1500 rpm.",
+      "firmware": {
+        "path": "V3.24.6/firmware.bin"
+      },
+      "filesystem": {
+        "path": "V3.24.6/littlefs.bin"
+      }
+    },
     {
       "version": "3.24.1",
       "channel": "stable",
