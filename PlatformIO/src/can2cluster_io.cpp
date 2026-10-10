@@ -149,12 +149,15 @@ void setupLedcOutputs()
   speedChannelConfig.hpoint = 0;
   ledc_channel_config(&speedChannelConfig);
 
+  // REF_TICK once, for the life of the boot. setFrequencyRPM() must not
+  // reconfigure this timer: doing it on every rise off 0 puts a 200 Hz
+  // burst on the pin, which the Spiyda reads as a jump.
   ledc_timer_config_t rpmTimerConfig = {};
   rpmTimerConfig.speed_mode = LEDC_MODE;
   rpmTimerConfig.timer_num = LEDC_RPM_TIMER;
   rpmTimerConfig.duty_resolution = LEDC_RESOLUTION;
-  rpmTimerConfig.freq_hz = LEDC_LATCH_FREQ_HZ;
-  rpmTimerConfig.clk_cfg = LEDC_AUTO_CLK;
+  rpmTimerConfig.freq_hz = 200;
+  rpmTimerConfig.clk_cfg = LEDC_USE_REF_TICK;
   ledc_timer_config(&rpmTimerConfig);
 
   ledc_channel_config_t coilChannelConfig = {};
@@ -532,6 +535,7 @@ void setFrequencyRPM(long frequencyHz)
 
   static ledc_channel_t onChannel = LEDC_RPM_COIL_CHANNEL;
   static bool outputOn = false;
+  static bool dutyLatched = false;
 
   ledc_stop(LEDC_MODE, inactiveChannel, 0); // immediate, no duty latch
 
@@ -540,27 +544,18 @@ void setFrequencyRPM(long frequencyHz)
     uint32_t targetFreq = static_cast<uint32_t>(frequencyHz);
     if (targetFreq < LEDC_MIN_FREQ_HZ)
       targetFreq = LEDC_MIN_FREQ_HZ;
-    if (!outputOn || onChannel != activeChannel)
+    if (onChannel != activeChannel && outputOn)
+      ledc_stop(LEDC_MODE, onChannel, 0); // coil/pin swapped under us
+    // Duty is latched once per boot, at 200 Hz, so update_duty cannot trip
+    // the watchdog. Coming off 0 only changes the frequency.
+    if (!dutyLatched || onChannel != activeChannel)
     {
-      if (outputOn && onChannel != activeChannel)
-        ledc_stop(LEDC_MODE, onChannel, 0); // coil/pin swapped under us
-      // REF_TICK is 1 MHz. At 10 bits it covers ~0.02 Hz to 976 Hz, which is
-      // the whole tach range, so one ledc_set_freq() serves the sweep and a
-      // steady low reading. AUTO_CLK after a 5 kHz latch floors at ~76 Hz,
-      // and that is the 1500 rpm step. Latch the duty at 200 Hz: fast enough
-      // that update_duty cannot trip the watchdog, slow enough for this clock.
-      ledc_timer_config_t rpmTimerConfig = {};
-      rpmTimerConfig.speed_mode = LEDC_MODE;
-      rpmTimerConfig.timer_num = LEDC_RPM_TIMER;
-      rpmTimerConfig.duty_resolution = LEDC_RESOLUTION;
-      rpmTimerConfig.freq_hz = 200;
-      rpmTimerConfig.clk_cfg = LEDC_USE_REF_TICK;
-      ledc_timer_config(&rpmTimerConfig);
       ledc_set_duty(LEDC_MODE, activeChannel, LEDC_DUTY_50);
       ledc_update_duty(LEDC_MODE, activeChannel);
-      onChannel = activeChannel;
-      outputOn = true;
+      dutyLatched = true;
     }
+    onChannel = activeChannel;
+    outputOn = true;
     ledc_set_freq(LEDC_MODE, LEDC_RPM_TIMER, targetFreq);
   }
   else if (outputOn)
