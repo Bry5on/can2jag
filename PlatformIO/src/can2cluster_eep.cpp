@@ -109,12 +109,12 @@ void readEEP() {
     // Enable UDS/TP diagnostics only if TP2.0 is selected
     autoDiagQuery = useTP20 || useUDS;
 
-    clusterRPMLimit = pref.getUShort("clusterRPMLimit", 7000);
+    clusterRPMLimit = pref.getUShort("clusterRPMLimit", 5500);
     shiftLimit = pref.getUShort("shiftLimit", 6000);
     shiftFlashes = pref.getUChar("shiftFlashes", 3);
     sweepSpeed = pref.getUChar("sweepSpeed", 18);
     maxSpeed = pref.getUShort("maxSpeed", 200);
-    maxRPM = pref.getUShort("maxRPM", 230);
+    maxRPM = pref.getUShort("maxRPM", 321);
     maxFreqHall = pref.getUShort("maxFreqHall", 200);
     maxFreqVR = pref.getUShort("maxFreqVR", 200);
 
