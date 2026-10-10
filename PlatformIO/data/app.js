@@ -326,6 +326,11 @@ async function fetchSettings() {
     if (coolantOutputEl) coolantOutputEl.value = data.coolantOutput || 'Off';
     const statorOutputEl = document.getElementById('statorOutput');
     if (statorOutputEl) statorOutputEl.value = data.statorOutput || 'Off';
+    if (Array.isArray(data.statorCalTemp) && Array.isArray(data.statorCalDuty) && data.statorCalTemp.length) {
+      const pts = data.statorCalTemp.map((t, i) => [t, data.statorCalDuty[i]]);
+      const focused = document.activeElement && document.activeElement.closest && document.activeElement.closest('#statorCurveTable');
+      if (!focused) renderStatorCurve(pts);
+    }
     if (typeof syncLastOutputValues === 'function') syncLastOutputValues();
     const coolantWarnEl = document.getElementById('coolantWarnTemp');
     if (coolantWarnEl) {
@@ -791,13 +796,49 @@ function initGaugeUI() {
 let coolantState = { duty: 0, maxDuty: 1023, calMode: false, points: [], temp: 0, appliedDuty: 0 };
 let coolantSelectedTemp = 90;
 
+const STATOR_CURVE_ROWS = 8;
+const STATOR_CURVE_DEFAULT = [[0, 60], [15, 110], [20, 120], [60, 170], [80, 220], [110, 370], [120, 470]];
+
+function renderStatorCurve(points) {
+  const body = document.getElementById('statorCurveBody');
+  if (!body) return;
+  const src = (points && points.length) ? points : STATOR_CURVE_DEFAULT;
+  body.innerHTML = '';
+  for (let i = 0; i < STATOR_CURVE_ROWS; i++) {
+    const p = src[i] || ['', ''];
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td style="padding: 0.15rem;"><input type="number" class="stator-temp" min="-40" max="200" step="1" value="' + (p[0] === '' ? '' : p[0]) + '" style="width: 100%;"></td>' +
+      '<td style="padding: 0.15rem;"><input type="number" class="stator-duty" min="0" max="1023" step="1" value="' + (p[1] === '' ? '' : p[1]) + '" style="width: 100%;"></td>';
+    body.appendChild(tr);
+  }
+}
+
+function readStatorCurve() {
+  const rows = document.querySelectorAll('#statorCurveBody tr');
+  const points = [];
+  rows.forEach(tr => {
+    const t = tr.querySelector('.stator-temp').value.trim();
+    const d = tr.querySelector('.stator-duty').value.trim();
+    if (t === '' || d === '') return;
+    points.push([parseInt(t, 10), parseInt(d, 10)]);
+  });
+  return points;
+}
+
 function initStatorCurve() {
+  renderStatorCurve(STATOR_CURVE_DEFAULT);
   const btn = document.getElementById('statorLoadCurve');
   if (!btn) return;
   btn.addEventListener('click', async () => {
+    const points = readStatorCurve();
+    if (!points.length) {
+      if (typeof showNotification === 'function') showNotification('Enter at least one temp and duty');
+      return;
+    }
     const statorEl = document.getElementById('statorOutput');
     if (statorEl) statorEl.value = 'EML';
-    await pushControl('statorLoadCurve', 1);
+    await pushControl('statorLoadCurve', points);
     await pushControl('statorOutput', 'EML');
     if (typeof syncLastOutputValues === 'function') syncLastOutputValues();
     if (typeof showNotification === 'function') showNotification('Stator curve loaded on EML');
