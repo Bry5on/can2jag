@@ -553,15 +553,24 @@ void setFrequencyRPM(long frequencyHz)
       outputOn = true;
     }
     // ledc_set_freq() keeps the divider from the 5 kHz latch and will not go
-    // below ~76 Hz. On the 6-cyl Spiyda that is 1500 rpm, which is the floor
-    // seen for every test under 2500. Reconfigure the timer at the target.
-    ledc_timer_config_t rpmTimerConfig = {};
-    rpmTimerConfig.speed_mode = LEDC_MODE;
-    rpmTimerConfig.timer_num = LEDC_RPM_TIMER;
-    rpmTimerConfig.duty_resolution = LEDC_RESOLUTION;
-    rpmTimerConfig.freq_hz = targetFreq;
-    rpmTimerConfig.clk_cfg = LEDC_AUTO_CLK;
-    ledc_timer_config(&rpmTimerConfig);
+    // below ~76 Hz, which is 1500 rpm on the 6-cyl Spiyda. Reconfigure only
+    // for those low rates. Above the floor, set_freq is the light call: the
+    // needle sweep retunes every 10 ms, and timer_config on each step stalls
+    // the ramp.
+    if (targetFreq < 80)
+    {
+      ledc_timer_config_t rpmTimerConfig = {};
+      rpmTimerConfig.speed_mode = LEDC_MODE;
+      rpmTimerConfig.timer_num = LEDC_RPM_TIMER;
+      rpmTimerConfig.duty_resolution = LEDC_RESOLUTION;
+      rpmTimerConfig.freq_hz = targetFreq;
+      rpmTimerConfig.clk_cfg = LEDC_AUTO_CLK;
+      ledc_timer_config(&rpmTimerConfig);
+    }
+    else
+    {
+      ledc_set_freq(LEDC_MODE, LEDC_RPM_TIMER, targetFreq);
+    }
   }
   else if (outputOn)
   {
