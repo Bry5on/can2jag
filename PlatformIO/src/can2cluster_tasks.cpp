@@ -194,17 +194,27 @@ void updateSpeed(void *args)
         }
         if (useAftermarket || useGs450h)
         {
-          vehicleSpeed = int(aftermarketSpeed);
+          vehicleSpeed = int(aftermarketSpeed + 0.5);
         }
       }
+
+      // GS450H speed is kph in 0.035 steps. Carry it past the int cast so the
+      // frequency output can move in 0.1 kph. 10 Hz per displayed unit, so
+      // 1 Hz at the speedo motor is 0.1 kph (or 0.1 mph if useMPH is on).
+      double preciseSpeed = (useAftermarket || useGs450h) ? aftermarketSpeed : -1.0;
 
       if (useMPH)
       {
         vehicleSpeed = int(((uint32_t)vehicleSpeed * mphFactor) / 1000000); // km/h -> MPH (factor 0.621371)
+        if (preciseSpeed >= 0.0)
+          preciseSpeed *= 0.621371;
       }
 
       // calculate final frequency:
-      frequencySpeed = map(vehicleSpeed, 0, maxSpeed, 0, maxSpeed);
+      if (preciseSpeed >= 0.0)
+        frequencySpeed = (long)(preciseSpeed * 10.0 + 0.5);
+      else
+        frequencySpeed = map(vehicleSpeed, 0, maxSpeed, 0, maxSpeed);
       setFrequencySpeed(frequencySpeed); // minimum speed may command 0 and setFreq. will cause crash, so +1 to error 'catch'  }
     }
     vTaskDelay(pdMS_TO_TICKS(rpmPause));
