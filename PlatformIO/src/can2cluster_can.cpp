@@ -1,4 +1,5 @@
   #include "can2cluster_can.h"
+#include <math.h>
 #include "can2cluster_uds.h"
 #include "can2cluster_savvycan.h"
 
@@ -399,7 +400,11 @@ void onBodyRX(const twai_message_t &frame)
   {
     vehicleStatorTemp  = frame.data[2];
     vehicleCoolantTemp = frame.data[3];
-    aftermarketSpeed   = frame.data[1] * 0.5; // already mph
+    // Shaft rpm (bytes 4/5, signed LE) is proportional to road speed.
+    // 46.0 rpm/mph from the s-12 log => 28.6 rpm/kph. One count is 0.035 kph.
+    // Stored as kph; useMPH defaults false, so the gauge wants kph.
+    int16_t shaftRpm = (int16_t)((uint16_t)frame.data[4] | ((uint16_t)frame.data[5] << 8));
+    aftermarketSpeed = fabs((double)shaftRpm) / 28.6;
     // tach-ammeter: display amps*10 as RPM
     vehicleRPMCAN = (uint16_t)frame.data[6] * 20u; // (A/2)*20 = A*10
   }
