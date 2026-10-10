@@ -442,8 +442,18 @@
                     <small style="color: var(--text-dim);">Second PWM gauge, GS450H stator temperature (0x0AA byte 2). Takes the other ULN2003 pin. The two gauges cannot share a pin.</small>
                 </div>
                 <div class="input-group" style="margin-top: 1rem;">
+                    <label>Stator Curve</label>
+                    <table id="statorCurveTable" style="width: 100%; border-collapse: collapse; margin: 0.4rem 0;">
+                        <thead>
+                            <tr>
+                                <th style="text-align: left; padding: 0.25rem;">Temp (&deg;C)</th>
+                                <th style="text-align: left; padding: 0.25rem;">Duty</th>
+                            </tr>
+                        </thead>
+                        <tbody id="statorCurveBody"></tbody>
+                    </table>
                     <button class="btn-secondary" id="statorLoadCurve" type="button">Load stator curve on EML</button>
-                    <small style="color: var(--text-dim);">Applies 0/60, 15/110, 20/120, 60/170, 80/220, 110/370, 120/470 and selects EML. Coolant keeps EPC.</small>
+                    <small style="color: var(--text-dim);">Writes the points above, sorted by temperature, and selects EML. Empty rows are skipped. Coolant keeps its pin.</small>
                 </div>
                 <div class="input-group" style="margin-top: 1rem;">
                     <label>Warning Temperature: <span id="coolantWarnTemp-display">120</span> &deg;C</label>
