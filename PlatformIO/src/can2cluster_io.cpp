@@ -4,7 +4,6 @@
 #include "can2cluster_i2c.h"
 #include <driver/ledc.h>
 #include <driver/gpio.h>
-#include <esp_timer.h>
 
 // Windowed frequency capture — shared by the hall, VR and RPM inputs. Deriving Hz
 // from a single edge-to-edge period turns tone-wheel / tooth-spacing jitter straight
@@ -492,89 +491,52 @@ static void holdRpmPinLow(ledc_channel_t channel, int pin)
   digitalWrite(pin, LOW);
 }
 
-// The tach wants a few hundred edges a second, each 1-2 ms wide. LEDC is
-// the wrong peripheral for that: every way of retuning it on this core drops
-// the timer to its 1.2 Hz floor or restarts the period. A hardware timer that
-// raises the pin and lowers it does not have a divider to get wrong.
-static esp_timer_handle_t rpmPeriodTimer = nullptr;
-static esp_timer_handle_t rpmWidthTimer = nullptr;
-static int rpmOutPin = -1;
-static uint32_t rpmWidthUs = 1500;
-
-static uint32_t rpmPulseWidthUs(uint32_t freqHz)
-{
-  if (freqHz <= 50) return 2000;   // <= 1000 rpm
-  if (freqHz >= 275) return 800;   // >= 5500 rpm
-  return 2000 - ((freqHz - 50) * 1200U) / 225U;
-}
-
-static void rpmEndPulse(void *)
-{
-  if (rpmOutPin >= 0)
-    gpio_set_level((gpio_num_t)rpmOutPin, 0);
-}
-
-static void rpmStartPulse(void *)
-{
-  if (rpmOutPin < 0)
-    return;
-  gpio_set_level((gpio_num_t)rpmOutPin, 1);
-  esp_timer_stop(rpmWidthTimer);
-  esp_timer_start_once(rpmWidthTimer, rpmWidthUs);
-}
-
-static void rpmTimersInit()
-{
-  if (rpmPeriodTimer)
-    return;
-  const esp_timer_create_args_t widthArgs = {.callback = rpmEndPulse, .name = "rpmWidth"};
-  const esp_timer_create_args_t periodArgs = {.callback = rpmStartPulse, .name = "rpmPeriod"};
-  esp_timer_create(&widthArgs, &rpmWidthTimer);
-  esp_timer_create(&periodArgs, &rpmPeriodTimer);
-}
-
-static void rpmPinTake(int pin)
-{
-  ledcDetach((uint8_t)pin);
-  gpio_reset_pin((gpio_num_t)pin);
-  gpio_set_direction((gpio_num_t)pin, GPIO_MODE_OUTPUT);
-  gpio_set_level((gpio_num_t)pin, 0);
-  rpmOutPin = pin;
-}
-
 // adjust output frequency
 void setFrequencyRPM(long frequencyHz)
 {
   static long lastFrequencyHz = -1;
   static bool lastCoilType = false;
 
-  if (coilType == lastCoilType && lastFrequencyHz >= 0 &&
-      (frequencyHz > lastFrequencyHz ? frequencyHz - lastFrequencyHz : lastFrequencyHz - frequencyHz) <= 2)
+  // Only call LEDC API when something actually changed — calling
+  // ledc_set_freq/duty every 1 ms while spinning hammers the LEDC
+  // driver spinlock and triggers internal FreeRTOS assertions.
+  if (frequencyHz == lastFrequencyHz && coilType == lastCoilType)
     return;
 
   lastFrequencyHz = frequencyHz;
   lastCoilType = coilType;
-  rpmTimersInit();
 
-  int activePin = coilType ? pinCoil : pinRPM;
-  if (rpmOutPin != activePin)
-    rpmPinTake(activePin);
+  ledc_channel_t activeChannel = coilType ? LEDC_RPM_COIL_CHANNEL : LEDC_RPM_PIN_CHANNEL;
+  ledc_channel_t inactiveChannel = coilType ? LEDC_RPM_PIN_CHANNEL : LEDC_RPM_COIL_CHANNEL;
 
-  esp_timer_stop(rpmPeriodTimer);
-  esp_timer_stop(rpmWidthTimer);
-  gpio_set_level((gpio_num_t)rpmOutPin, 0);
+  static ledc_channel_t onChannel = LEDC_RPM_COIL_CHANNEL;
+  static bool outputOn = false;
 
-  if (frequencyHz <= 0)
-    return;
+  ledc_stop(LEDC_MODE, inactiveChannel, 0); // immediate, no duty latch
 
-  uint32_t targetFreq = static_cast<uint32_t>(frequencyHz);
-  if (targetFreq < LEDC_MIN_FREQ_HZ)
-    targetFreq = LEDC_MIN_FREQ_HZ;
-  if (targetFreq > 400)
-    targetFreq = 400;
-  rpmWidthUs = rpmPulseWidthUs(targetFreq);
-
-  esp_timer_start_periodic(rpmPeriodTimer, 1000000UL / targetFreq);
+  if (frequencyHz > 0)
+  {
+    uint32_t targetFreq = static_cast<uint32_t>(frequencyHz);
+    if (targetFreq < LEDC_MIN_FREQ_HZ)
+      targetFreq = LEDC_MIN_FREQ_HZ;
+    if (!outputOn || onChannel != activeChannel)
+    {
+      if (outputOn && onChannel != activeChannel)
+        ledc_stop(LEDC_MODE, onChannel, 0); // coil/pin swapped under us
+      // Latch 50% duty while the timer is fast, THEN drop to the real rate.
+      ledc_set_freq(LEDC_MODE, LEDC_RPM_TIMER, LEDC_LATCH_FREQ_HZ);
+      ledc_set_duty(LEDC_MODE, activeChannel, LEDC_DUTY_50);
+      ledc_update_duty(LEDC_MODE, activeChannel);
+      onChannel = activeChannel;
+      outputOn = true;
+    }
+    ledc_set_freq(LEDC_MODE, LEDC_RPM_TIMER, targetFreq);
+  }
+  else if (outputOn)
+  {
+    ledc_stop(LEDC_MODE, activeChannel, 0);
+    outputOn = false;
+  }
 }
 
 // adjust output frequency
