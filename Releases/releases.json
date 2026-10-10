@@ -1,7 +1,20 @@
 {
   "product": "Can2Cluster",
-  "latest": "3.24.6",
+  "latest": "3.24.7",
   "releases": [
+    {
+      "version": "3.24.7",
+      "channel": "stable",
+      "date": "2026-10-09",
+      "ota": true,
+      "notes": "Needle sweep restored. Tach uses ledc_set_freq above 80 Hz so the ramp is not reconfigured every step; low rates still reconfigure the timer.",
+      "firmware": {
+        "path": "V3.24.7/firmware.bin"
+      },
+      "filesystem": {
+        "path": "V3.24.7/littlefs.bin"
+      }
+    },
     {
       "version": "3.24.6",
       "channel": "stable",
