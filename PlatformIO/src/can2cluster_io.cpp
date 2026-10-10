@@ -149,12 +149,33 @@ void setupLedcOutputs()
   speedChannelConfig.hpoint = 0;
   ledc_channel_config(&speedChannelConfig);
 
-  // Do not bind the tach pins here. Binding them to a timer parked at 2 Hz lets that
-  // rate reach the Spiyda, and each 250 ms half-period pegs the needle.
-  pinMode(pinCoil, OUTPUT);
-  digitalWrite(pinCoil, LOW);
-  pinMode(pinRPM, OUTPUT);
-  digitalWrite(pinRPM, LOW);
+  ledc_timer_config_t rpmTimerConfig = {};
+  rpmTimerConfig.speed_mode = LEDC_MODE;
+  rpmTimerConfig.timer_num = LEDC_RPM_TIMER;
+  rpmTimerConfig.duty_resolution = LEDC_RESOLUTION;
+  rpmTimerConfig.freq_hz = LEDC_LATCH_FREQ_HZ;
+  rpmTimerConfig.clk_cfg = LEDC_AUTO_CLK;
+  ledc_timer_config(&rpmTimerConfig);
+
+  ledc_channel_config_t coilChannelConfig = {};
+  coilChannelConfig.gpio_num = pinCoil;
+  coilChannelConfig.speed_mode = LEDC_MODE;
+  coilChannelConfig.channel = LEDC_RPM_COIL_CHANNEL;
+  coilChannelConfig.intr_type = LEDC_INTR_DISABLE;
+  coilChannelConfig.timer_sel = LEDC_RPM_TIMER;
+  coilChannelConfig.duty = LEDC_DUTY_OFF;
+  coilChannelConfig.hpoint = 0;
+  ledc_channel_config(&coilChannelConfig);
+
+  ledc_channel_config_t rpmPinChannelConfig = {};
+  rpmPinChannelConfig.gpio_num = pinRPM;
+  rpmPinChannelConfig.speed_mode = LEDC_MODE;
+  rpmPinChannelConfig.channel = LEDC_RPM_PIN_CHANNEL;
+  rpmPinChannelConfig.intr_type = LEDC_INTR_DISABLE;
+  rpmPinChannelConfig.timer_sel = LEDC_RPM_TIMER;
+  rpmPinChannelConfig.duty = LEDC_DUTY_OFF;
+  rpmPinChannelConfig.hpoint = 0;
+  ledc_channel_config(&rpmPinChannelConfig);
 }
 }
 
