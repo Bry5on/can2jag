@@ -1,7 +1,20 @@
 {
   "product": "Can2Cluster",
-  "latest": "3.24.9",
+  "latest": "3.24.10",
   "releases": [
+    {
+      "version": "3.24.10",
+      "channel": "stable",
+      "date": "2026-10-10",
+      "ota": true,
+      "notes": "Tach duty is latched once per boot. Returning from 0 rpm only changes the frequency, so the needle no longer jumps.",
+      "firmware": {
+        "path": "V3.24.10/firmware.bin"
+      },
+      "filesystem": {
+        "path": "V3.24.10/littlefs.bin"
+      }
+    },
     {
       "version": "3.24.9",
       "channel": "stable",
