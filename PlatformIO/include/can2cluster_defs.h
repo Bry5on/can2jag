@@ -15,6 +15,7 @@
 #include <ESPmDNS.h>        // included for WiFi pages
 #include <OneButton.h>
 
+// V3.24.11 - 16-bit GS450H current, inductor temp on the coolant gauge, speed full scale 2253 Hz.
 // V3.24.10 - Tach duty latched once per boot so returning from 0 rpm does not jump.
 // V3.24.9 - Editable 8-point stator curve table, committed by the Load stator curve on EML button.
 // V3.24.8 - Tach timer clocked from REF_TICK so the needle sweep runs from zero instead of stepping at 1500 rpm.
@@ -22,7 +23,7 @@
 // V3.24.6 - Tach defaults 5500 rpm / 321 Hz for the 6-cyl Spiyda; timer reconfigured so rates below 76 Hz reach the gauge.
 // V3.24.1 - RPM square no longer parks the timer at 5 kHz; OTA points at Bry5on/can2jag XJ.
 //         (guided GitHub update, Home WiFi bridge mode, recovery page).
-#define FW_VERSION "3.24.10"
+#define FW_VERSION "3.24.11"
 
 #define COOLANT_CAL_MAX 12 // max calibration points for the coolant temp gauge
 // LEDC 10-bit resolution at the 80 MHz APB clock tops out at 80e6/1024 ≈ 78125 Hz.
