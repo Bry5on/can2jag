@@ -113,7 +113,8 @@ void readEEP() {
     shiftLimit = pref.getUShort("shiftLimit", 6000);
     shiftFlashes = pref.getUChar("shiftFlashes", 3);
     sweepSpeed = pref.getUChar("sweepSpeed", 18);
-    maxSpeed = pref.getUShort("maxSpeed", 200);
+    maxSpeed = pref.getUShort("maxSpeed", 2253);
+    if (maxSpeed == 200) maxSpeed = 2253; // migrate the old full-scale default
     maxRPM = pref.getUShort("maxRPM", 321);
     maxFreqHall = pref.getUShort("maxFreqHall", 200);
     maxFreqVR = pref.getUShort("maxFreqVR", 200);
