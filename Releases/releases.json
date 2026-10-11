@@ -1,7 +1,20 @@
 {
   "product": "Can2Cluster",
-  "latest": "3.24.10",
+  "latest": "3.24.11",
   "releases": [
+    {
+      "version": "3.24.11",
+      "channel": "stable",
+      "date": "2026-10-11",
+      "ota": true,
+      "notes": "GS450H current is now a 16-bit |amps|*10 so the tach no longer wraps to zero at 512A. Coolant gauge reads inductor temp from 0x0AC. Speed full scale is 2253 Hz (140 mph at 10 Hz/kph), and the sweep controls are number fields.",
+      "firmware": {
+        "path": "V3.24.11/firmware.bin"
+      },
+      "filesystem": {
+        "path": "V3.24.11/littlefs.bin"
+      }
+    },
     {
       "version": "3.24.10",
       "channel": "stable",
