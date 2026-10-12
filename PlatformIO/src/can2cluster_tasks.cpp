@@ -198,9 +198,9 @@ void updateSpeed(void *args)
         }
       }
 
-      // GS450H speed is kph in 0.035 steps. Carry it past the int cast so the
-      // frequency output can move in 0.1 kph. 10 Hz per displayed unit, so
-      // 1 Hz at the speedo motor is 0.1 kph (or 0.1 mph if useMPH is on).
+      // GS450H speed is kph in 0.035 steps. Round to the nearest Hz: the
+      // SpeedPulser rejects any edge under 1000 us, so 10 Hz/kph clips at
+      // 100 kph. 1 Hz per kph matches the original firmware and the pulser.
       // The diagnostic test must win over the live CAN source, or a test with
       // useGs450h on drives the pin from aftermarketSpeed (usually 0).
       double preciseSpeed = (!testSpeedo && (useAftermarket || useGs450h)) ? aftermarketSpeed : -1.0;
@@ -214,7 +214,7 @@ void updateSpeed(void *args)
 
       // calculate final frequency:
       if (preciseSpeed >= 0.0)
-        frequencySpeed = (long)(preciseSpeed * 10.0 + 0.5);
+        frequencySpeed = (long)(preciseSpeed + 0.5);
       else
         frequencySpeed = map(vehicleSpeed, 0, maxSpeed, 0, maxSpeed);
       setFrequencySpeed(frequencySpeed); // minimum speed may command 0 and setFreq. will cause crash, so +1 to error 'catch'  }
