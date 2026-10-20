@@ -1,7 +1,20 @@
 {
   "product": "Can2Cluster",
-  "latest": "3.24.11",
+  "latest": "3.24.12",
   "releases": [
+    {
+      "version": "3.24.12",
+      "channel": "stable",
+      "date": "2026-10-20",
+      "ota": true,
+      "notes": "Speed output is back to 1 Hz per kph so the SpeedPulser is not clipped at 100 kph. Full scale is 225 Hz, which is 140 mph at 1:1. A saved maxSpeed of 2253 is migrated to 225.",
+      "firmware": {
+        "path": "V3.24.12/firmware.bin"
+      },
+      "filesystem": {
+        "path": "V3.24.12/littlefs.bin"
+      }
+    },
     {
       "version": "3.24.11",
       "channel": "stable",
