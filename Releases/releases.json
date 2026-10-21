@@ -1,7 +1,20 @@
 {
   "product": "Can2Cluster",
-  "latest": "3.24.12",
+  "latest": "3.24.13",
   "releases": [
+    {
+      "version": "3.24.13",
+      "channel": "stable",
+      "date": "2026-10-21",
+      "ota": true,
+      "notes": "Speed output is now a GPTimer square wave instead of LEDC. The old LEDC path pinned the timer to the APB clock and could not represent anything under about 76 Hz, so a 43 kph test read as 124. Low speeds are now exact.",
+      "firmware": {
+        "path": "V3.24.13/firmware.bin"
+      },
+      "filesystem": {
+        "path": "V3.24.13/littlefs.bin"
+      }
+    },
     {
       "version": "3.24.12",
       "channel": "stable",
