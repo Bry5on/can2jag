@@ -129,25 +129,103 @@ constexpr uint32_t LEDC_MIN_FREQ_HZ = 2;
 // rate is set afterwards - a frequency change needs no duty latch.
 constexpr uint32_t LEDC_LATCH_FREQ_HZ = 5000;
 
+
+// ── Speed square-wave output ────────────────────────────────────────────────
+// 50% square wave from a GPTimer whose alarm ISR toggles the pin every half
+// period. Replaces the LEDC speed output, which could not represent frequencies
+// below ~76 Hz at 10-bit on the APB clock. RPM stays on LEDC.
+constexpr uint32_t SQUARE_WAVE_TICK_HZ = 1000000; // 1 us timer ticks
+
+struct SquareWaveOut
+{
+  hw_timer_t *timer;
+  volatile uint8_t pin;
+  volatile bool on;
+  volatile bool high;
+  long lastFreqHz;
+};
+
+SquareWaveOut speedWave = {nullptr, pinSpeed, false, false, -1};
+
+void IRAM_ATTR onSpeedWaveAlarm(void *arg)
+{
+  SquareWaveOut *w = static_cast<SquareWaveOut *>(arg);
+  if (!w->on)
+  {
+    w->high = false;
+    gpio_ll_set_level(&GPIO, w->pin, 0);
+    return;
+  }
+  w->high = !w->high;
+  gpio_ll_set_level(&GPIO, w->pin, w->high ? 1 : 0);
+}
+
+bool squareWaveInit(SquareWaveOut &w)
+{
+  w.timer = timerBegin(SQUARE_WAVE_TICK_HZ);
+  if (w.timer == nullptr)
+    return false;
+  timerAttachInterruptArg(w.timer, &onSpeedWaveAlarm, &w);
+  timerStop(w.timer);
+  w.on = false;
+  w.high = false;
+  w.lastFreqHz = 0;
+  digitalWrite(w.pin, LOW);
+  return true;
+}
+
+void squareWaveStop(SquareWaveOut &w)
+{
+  if (w.on)
+  {
+    w.on = false;
+    timerStop(w.timer);
+  }
+  w.high = false;
+  digitalWrite(w.pin, LOW);
+  w.lastFreqHz = 0;
+}
+
+void squareWaveSet(SquareWaveOut &w, long frequencyHz)
+{
+  if (w.timer == nullptr)
+    return;
+  if (frequencyHz <= 0)
+  {
+    squareWaveStop(w);
+    return;
+  }
+  w.lastFreqHz = frequencyHz;
+
+  uint64_t halfPeriodTicks = SQUARE_WAVE_TICK_HZ / (2ULL * (uint64_t)frequencyHz);
+  if (halfPeriodTicks < 2)
+    halfPeriodTicks = 2;
+
+  if (!w.on)
+  {
+    timerWrite(w.timer, 0);
+    timerAlarm(w.timer, halfPeriodTicks, true, 0);
+    w.on = true;
+    timerStart(w.timer);
+    return;
+  }
+
+  timerAlarm(w.timer, halfPeriodTicks, true, 0);
+  if (timerRead(w.timer) >= halfPeriodTicks)
+    timerWrite(w.timer, 0);
+}
+
 void setupLedcOutputs()
 {
-  ledc_timer_config_t speedTimerConfig = {};
-  speedTimerConfig.speed_mode = LEDC_MODE;
-  speedTimerConfig.timer_num = LEDC_SPEED_TIMER;
-  speedTimerConfig.duty_resolution = LEDC_RESOLUTION;
-  speedTimerConfig.freq_hz = LEDC_LATCH_FREQ_HZ;
-  speedTimerConfig.clk_cfg = LEDC_AUTO_CLK;
-  ledc_timer_config(&speedTimerConfig);
-
-  ledc_channel_config_t speedChannelConfig = {};
-  speedChannelConfig.gpio_num = pinSpeed;
-  speedChannelConfig.speed_mode = LEDC_MODE;
-  speedChannelConfig.channel = LEDC_SPEED_CHANNEL;
-  speedChannelConfig.intr_type = LEDC_INTR_DISABLE;
-  speedChannelConfig.timer_sel = LEDC_SPEED_TIMER;
-  speedChannelConfig.duty = LEDC_DUTY_OFF;
-  speedChannelConfig.hpoint = 0;
-  ledc_channel_config(&speedChannelConfig);
+  // Speed is a GPTimer square wave, not LEDC. The old LEDC path parked the
+  // timer at 5 kHz to latch the duty, which pinned the low-speed block to the
+  // 80 MHz APB clock. At 10-bit that clock cannot represent anything under
+  // ~76 Hz, so ledc_set_freq() silently failed and low speeds stuck. A GPTimer
+  // alarm has no clock floor: the frequency is just the alarm period.
+  if (!squareWaveInit(speedWave))
+  {
+    DEBUG_IO("[Init] Speed output timer failed - speed output disabled");
+  }
 
   // REF_TICK once, for the life of the boot. setFrequencyRPM() must not
   // reconfigure this timer: doing it on every rise off 0 puts a 200 Hz
@@ -572,40 +650,15 @@ void setFrequencyRPM(long frequencyHz)
   }
 }
 
-// adjust output frequency
+// adjust output frequency. GPTimer square wave: no LEDC clock floor, so a
+// 43 Hz request is actually 43 Hz instead of being silently rejected.
 void setFrequencySpeed(long frequencyHz)
 {
-  static long lastFrequencyHz = -1;
-
-  if (frequencyHz == lastFrequencyHz)
+  if (frequencyHz < 0)
+    frequencyHz = 0;
+  if (frequencyHz == speedWave.lastFreqHz)
     return;
-
-  lastFrequencyHz = frequencyHz;
-
-  static bool outputOn = false;
-
-  if (frequencyHz > 0)
-  {
-    uint32_t targetFreq = static_cast<uint32_t>(frequencyHz);
-    if (targetFreq < LEDC_MIN_FREQ_HZ)
-    {
-      targetFreq = LEDC_MIN_FREQ_HZ;
-    }
-    if (!outputOn)
-    {
-      // Latch 50% duty while the timer is fast, THEN drop to the real rate.
-      ledc_set_freq(LEDC_MODE, LEDC_SPEED_TIMER, LEDC_LATCH_FREQ_HZ);
-      ledc_set_duty(LEDC_MODE, LEDC_SPEED_CHANNEL, LEDC_DUTY_50);
-      ledc_update_duty(LEDC_MODE, LEDC_SPEED_CHANNEL);
-      outputOn = true;
-    }
-    ledc_set_freq(LEDC_MODE, LEDC_SPEED_TIMER, targetFreq);
-  }
-  else if (outputOn)
-  {
-    ledc_stop(LEDC_MODE, LEDC_SPEED_CHANNEL, 0); // idle low, applied at once
-    outputOn = false;
-  }
+  squareWaveSet(speedWave, frequencyHz);
 }
 
 // Interpolate a PWM duty (0-1023) for a coolant temperature from the
