@@ -153,11 +153,11 @@ void IRAM_ATTR onSpeedWaveAlarm(void *arg)
   if (!w->on)
   {
     w->high = false;
-    gpio_ll_set_level(&GPIO, w->pin, 0);
+    gpio_set_level((gpio_num_t)w->pin, 0);
     return;
   }
   w->high = !w->high;
-  gpio_ll_set_level(&GPIO, w->pin, w->high ? 1 : 0);
+  gpio_set_level((gpio_num_t)w->pin, w->high ? 1 : 0);
 }
 
 bool squareWaveInit(SquareWaveOut &w)
